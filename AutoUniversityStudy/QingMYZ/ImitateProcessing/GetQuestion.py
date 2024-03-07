@@ -1,4 +1,4 @@
-from QingMa.StandardQuestion import standard_question
+from AutoUniversityStudy.QingMYZ.ImitateProcessing.StandardQuestion import standard_question
 
 from selenium.webdriver.common.by import By
 

@@ -6,7 +6,7 @@ from selenium.webdriver.chrome.service import Service
 import time
 import random
 
-class QingMYZ():
+class QingMYZClass():
     def __init__(self, user_data_file) -> None:
         # 必须参数
         self.__user_data_file = user_data_file
@@ -24,7 +24,7 @@ class QingMYZ():
         # 初始化
         self.__getUserData()
 
-    def __del__(self):
+    def del__(self):
         self.__updataUserData()
     
     # 主流程
@@ -174,7 +174,7 @@ class QingMYZ():
 
     # 获取用户数据
     def __getUserData(self):
-        pass
+        print(self.__user_data_file)
 
     # 更新用户数据
     def __updataUserData(self):

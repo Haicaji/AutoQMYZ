@@ -1,16 +1,23 @@
+import os, sys
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+
+from AutoUniversityStudy.QingMYZ.QingMYZMain import QingMYZClass
+
 import os
 
 # 当前所在绝对路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
+# 返回上一级目录
+current_dir = os.path.dirname(current_dir)
 # 用户数据位置
-user_data_dir = '..\\Data\\User\\QingMYZ'
-# 题库路径
-question_data_dir = '..\\Data\\Question\\QingMYZ'
-# API密钥路径
-API_key_data_dir = '..\\Data\\API_key'
+user_data_dir = current_dir + '\\Data\\User\\QingMYZ'
 
 def multi_user_main():
-    pass
+    # 遍历目录下的所有json文件
+    for root, dirs, files in os.walk(user_data_dir):
+        for file in files:
+            if file.endswith('.json'):
+                QingMYZClass(os.path.join(root, file))
 
 if __name__ == '__main__':
     multi_user_main()
