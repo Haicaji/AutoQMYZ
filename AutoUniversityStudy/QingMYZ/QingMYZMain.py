@@ -53,7 +53,7 @@ class QingMYZClass():
                 else:
                     # verify_request登入
                     login_user_by_verify_request(driver, 
-                                                 self.__login_key)
+                                                 self.__login_key[0])
                 break
             except Exception as e:
                 try_times += 1

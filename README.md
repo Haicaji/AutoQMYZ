@@ -30,7 +30,7 @@ AutoUniversityStudy/
 |-- Data/ # 数据文件(该文件夹内均为敏感信息, 请不要git上传)
 |   |-- API_key/ # 存放需要调用的API密钥
 |   |   |-- Gemini/ # 分平台存储
-|   |   |   |-- ...csv # 数据格式待定
+|   |   |   |-- key.txt
 |   |   |
 |   |   |-- .../ # 其他平台
 |   |

@@ -199,7 +199,15 @@ def get_answer_by_gemini(question, API_KEY):
 def get_answer_by_all(question, API_KEY, course_name):
     answer = get_answer_by_local(question, course_name)
     if answer == []:
-        if 'Gemini' in API_KEY.keys(): answer = get_answer_by_gemini(question, API_KEY['Gemini'])
+        if 'Gemini' in API_KEY.keys(): 
+            answer = get_answer_by_gemini(question, API_KEY['Gemini'])
+        else:
+            API_KEY_File = current_dir + '\\Data\\API_key\\Gemini\\key.txt'
+            with open(API_KEY_File, 'r', encoding='utf-8') as f:
+                API_KEY = f.read()
+            if API_KEY != '':
+                get_answer_by_gemini(question, API_KEY)
+
         # answer = get_answer_by_gemini_mini(question)
         if answer == []:
             answer = get_answer_by_human(question)
