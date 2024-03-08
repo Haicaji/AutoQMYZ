@@ -1,6 +1,6 @@
-from AutoUniversityStudy.QingMYZ.ImitateProcessing.StandardQuestion import standard_question
-
 from selenium.webdriver.common.by import By
+
+from AutoUniversityStudy.QingMYZ.ImitateProcessing.StandardQuestion import standard_question
 
 # 获取题目
 def get_question(driver):

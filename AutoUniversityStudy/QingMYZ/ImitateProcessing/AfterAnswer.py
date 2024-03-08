@@ -1,8 +1,13 @@
 import pandas as pd
-from os.path import exists
+from os.path import exists, abspath, dirname
+from os import makedirs
 
-question_data_dir = './question_data/'
-question_data_main = './question_data/question_main.csv'
+# 当前所在绝对路径
+current_dir = dirname(abspath(__file__))
+# 返回上一级目录
+current_dir = dirname(current_dir)
+current_dir = dirname(current_dir)
+current_dir = dirname(current_dir)
 
 # 初始化一个csv文件
 def creat_csv(csv_file):
@@ -36,16 +41,20 @@ def add_question_to_csv(csv_file, question, right_answer):
     df.to_csv(csv_file, index=False)
 
 # 答题后操作
-def after_answer(question, right_answer):
+def after_answer(question, right_answer, course_name):
+    # 本地题库位置
+    question_data_dir = current_dir + '\\Data\\Question_data\\QingMYZ'
+    question_data_main = 'question_main.csv'
+    question_data_dir += '\\' + course_name 
+    question_data_main = question_data_dir + '\\' + question_data_main
+
     # 判断是否存在csv文件
     if not exists(question_data_main):
+        # 判断是否存在文件夹
+        if not exists(question_data_dir):
+            makedirs(question_data_dir)
         creat_csv(question_data_main)
 
     # 添加数据
     add_question_to_csv(question_data_main, question, right_answer)
-
-if __name__ == '__main__':
-    a = after_answer(['单选题', 
-                  '11921年7月,中共第一次全国代表召开于()', 
-                  ['A.北京', 'B.上海', 'C.广州', 'D.武汉']], ['A.北京'])
     

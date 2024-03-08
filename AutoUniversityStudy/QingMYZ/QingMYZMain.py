@@ -1,23 +1,24 @@
-from AutoUniversityStudy.QingMYZ import *
-
-import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 import time
+import json
 import random
+import os
+
+from AutoUniversityStudy.QingMYZ import *
 
 class QingMYZClass():
     def __init__(self, user_data_file) -> None:
         # 必须参数
         self.__user_data_file = user_data_file
         self.__login_key = []
-        self.__api_key = []
+        self.__api_key = {}
         self.__aim_questions_num_total = 0
         self.__questions_num_now = 0
         self.__questions_num_day_max = 0
+        self.__course_name = ''
         # 可选参数
-        self.__course_name = []
-        self.__min_question_time = 5
+        self.__min_question_time = 5 #秒
         self.__low_right_rate = 0.65
         self.__top_right_rate = 1.00
 
@@ -57,7 +58,19 @@ class QingMYZClass():
             except Exception as e:
                 try_times += 1
                 if try_times > 1:
-                    print('登入或进入答题页面失败')
+                    print('登入失败')
+                    raise e
+                
+        # 进入答题页面
+        try_times = 0 # 异常后再次尝试次数
+        while True:
+            try:
+                into_answer_web(driver, self.__course_name)
+                break
+            except Exception as e:
+                try_times += 1
+                if try_times > 1:
+                    print('进入答题页面失败')
                     raise e
 
         # 当轮数据
@@ -73,7 +86,7 @@ class QingMYZClass():
                 while True:
                     print('-------------------------------')
                     # 记录开始时间
-                    start_time = time()
+                    start_time = time.time()
 
                     # 获取当前题目
                     question = get_question(driver)
@@ -91,19 +104,19 @@ class QingMYZClass():
                         else:
                             print("\n正确率过低警告!!!!!!!!!!!!!!!!!!\n")
                             # 查找答案
-                            answer = get_answer_by_all(question)
+                            answer = get_answer_by_all(question, self.__api_key, self.__course_name)
                     else:
                         # 查找答案
-                        answer = get_answer_by_all(question)
+                        answer = get_answer_by_all(question, self.__api_key, self.__course_name)
 
                     # 点击答案
                     right_answer, answer_sucess = click_answer(driver, answer, question[0])
 
                     # 答题后
-                    after_answer(question, right_answer)
+                    after_answer(question, right_answer, self.__course_name)
 
                     # 记录结束时间
-                    end_time = time()
+                    end_time = time.time()
 
                     # 统计及绘制数据
                     # 打印题目
@@ -129,6 +142,7 @@ class QingMYZClass():
                     # 休眠一下
                     if self.__min_question_time > end_time - start_time:
                         sleep(self.__min_question_time - (end_time - start_time))
+                        print(f'补偿做题时间:{self.__min_question_time - (end_time - start_time)}')
 
                     # 输出统计时间
                     all_time += end_time - start_time
@@ -139,27 +153,34 @@ class QingMYZClass():
                     if now_all_questions >= self.__questions_num_day_max:
                         driver.quit()
                         break
-                # -------------------------------
                 break
             except Exception as e:
                 try_times += 1
                 if try_times > 1:
                     raise e
+                driver.refresh()
+        
+        # 更新用户数据
+        self.__questions_num_now += now_all_questions
     
     # 创建浏览器控制驱动
     def __createDriver(self):
+        # 当前所在绝对路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 返回上一级目录
+        current_dir = os.path.dirname(current_dir)
+        current_dir = os.path.dirname(current_dir)
+
         # 配置浏览器选项
         options = webdriver.ChromeOptions()
 
         # 设置chrome浏览器路径
-        options.binary_location = r"./chrome/chrome.exe"
+        options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
 
-        # # 设置用户UA
-        # user_agent = r"Mozilla/5.0 (Linux; Android 13; Redmi K40 Build/SKQ1.201006.003; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.5615.48 Mobile Safari/537.36;webank/h5face;webank/1.0 yiban_android/5.1.2"
-        # options.add_argument(f"--user-agent={user_agent}")
+        # 随机生成UA
 
         # 设置chromedriver路径
-        service = Service(r"./chrome/chromedriver112.exe")
+        service = Service(f"{current_dir}\\ChromeWithDriver\\chromedriver112.exe")
 
         # 创建浏览器
         driver = webdriver.Chrome(service=service, options=options)
@@ -174,8 +195,60 @@ class QingMYZClass():
 
     # 获取用户数据
     def __getUserData(self):
-        print(self.__user_data_file)
-
+        # 读取用户数据文件
+        with open(self.__user_data_file, 'r', encoding='utf-8') as f:
+            user_data = json.load(f)
+        
+        # 读取用户登入数据
+        if user_data['user']['verify_request'] != '':
+            self.__login_key.append(user_data['user']['verify_request'])
+        elif user_data['user']['account'] != '' and user_data['user']['password'] != '':
+            self.__login_key.append(user_data['user']['account'])
+            self.__login_key.append(user_data['user']['password'])
+        else:
+            raise ValueError('用户数据不完整')
+        # 读取api_key数据
+        if user_data['API_key']['Gemini'] != '':
+            self.__api_key['Gemini'] = user_data['API_key']['Gemini']
+        if user_data['API_key']['ChatGPT'] != '':
+            self.__api_key['ChatGPT'] = user_data['API_key']['Gemini']
+        if user_data['API_key']['NewBing'] != '':
+            self.__api_key['NewBing'] = user_data['API_key']['Gemini']
+        # 读取做题数据
+        if user_data['answer_setting']['aim_questions_num_total'] != '':
+            self.__aim_questions_num_total = user_data['answer_setting']['aim_questions_num_total']
+            self.__aim_questions_num_total = int(self.__aim_questions_num_total)
+        else:
+            raise ValueError('答题设置数据不完整')
+        if user_data['answer_setting']['questions_num_day_max'] != '':
+            self.__questions_num_day_max = user_data['answer_setting']['questions_num_day_max']
+            self.__questions_num_day_max = int(self.__questions_num_day_max)
+        else:
+            raise ValueError('答题设置数据不完整')
+        if user_data['answer_setting']['course_name'] != '':
+            self.__course_name = user_data['answer_setting']['course_name']
+        else:
+            raise ValueError('答题设置数据不完整')
+        if user_data['now']['questions_num_now'] != '':
+            self.__questions_num_now = user_data['now']['questions_num_now']
+            self.__questions_num_now = int(self.__questions_num_now)
+        else:
+            self.__questions_num_now = 0
+        if user_data['answer_setting']['low_right_rate'] != '':
+            self.__low_right_rate = user_data['answer_setting']['low_right_rate']
+            self.__low_right_rate = float(self.__low_right_rate)
+        if user_data['answer_setting']['top_right_rate'] != '':
+            self.__top_right_rate = user_data['answer_setting']['top_right_rate']
+            self.__top_right_rate = float(self.__top_right_rate)
+        if user_data['answer_setting']['min_question_time'] != '':
+            self.__min_question_time = user_data['answer_setting']['min_question_time']
+            self.__min_question_time = float(self.__min_question_time)
+                
     # 更新用户数据
     def __updataUserData(self):
-        pass
+        with open(self.__user_data_file, 'r', encoding='utf-8') as f:
+            user_data = json.load(f)
+    
+        with open(self.__user_data_file, 'w', encoding='utf-8') as f:
+            user_data['now']['questions_num_now'] = self.__questions_num_now
+            json.dump(user_data, f, separators=(',', ':'), ensure_ascii=False)

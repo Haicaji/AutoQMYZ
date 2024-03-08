@@ -1,9 +1,8 @@
-import os, sys
+import os
+import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from AutoUniversityStudy.QingMYZ.QingMYZMain import QingMYZClass
-
-import os
 
 # 当前所在绝对路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -17,7 +16,9 @@ def multi_user_main():
     for root, dirs, files in os.walk(user_data_dir):
         for file in files:
             if file.endswith('.json'):
-                QingMYZClass(os.path.join(root, file))
+                Q = QingMYZClass(os.path.join(root, file))
+                Q.mainProcess()
+                Q.del__()
 
 if __name__ == '__main__':
     multi_user_main()

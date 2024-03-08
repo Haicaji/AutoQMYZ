@@ -1,19 +1,25 @@
 # 获取答案
 import pandas as pd
-from os.path import exists
+from os.path import exists, abspath, dirname
 import requests
 import json
 from time import sleep
 
-# 隐私数据
-API_KEY = 'AIzaSyDzyjqwDLmTfL36nsNyQRz70N80TSuzsME'
-
-# 本地题库位置
-question_data_dir = './question_data/'
-question_data_main = './question_data/question_main.csv'
+# 当前所在绝对路径
+current_dir = dirname(abspath(__file__))
+# 返回上一级目录
+current_dir = dirname(current_dir)
+current_dir = dirname(current_dir)
+current_dir = dirname(current_dir)
 
 # 通过本地获取答案
-def get_answer_by_local(question):
+def get_answer_by_local(question, course_name):
+    # 本地题库位置
+    question_data_dir = current_dir + '\\Data\\Question_data\\QingMYZ'
+    question_data_main = 'question_main.csv'
+    question_data_dir += '\\' + course_name 
+    question_data_main = question_data_dir + '\\' + question_data_main
+
     answer = []
 
     # 检查是否存在本地题库
@@ -68,16 +74,19 @@ def get_answer_by_human(question):
         if input_error:
             answer = input('你的输入非法, 请在此处输入答案(序号,多个请用空格隔开):')
 
-    answer.append(question[2][ans-1])
+    for ans in answer_list:
+        answer.append(question[2][ans-1])
 
     return answer
 
 # 通过gemini获取答案
-def get_answer_by_gemini_mini(question):
+def get_answer_by_gemini_mini(question, API_KEY):
     # 设置提问词
     text = "我想问你一个" + question[0] + ", 题目是" + question[1] + ", 有这些选项"
+    i = 0
     for option in question[2]:
-        text += option + ", "
+        text += chr(65 + i) + '.' + option + ", "
+        i += 1
     text += "请你直接给我回答字母(如果是多选回复多个字母, 用空格隔开):"
 
     # 提示词参数
@@ -169,15 +178,15 @@ def get_answer_by_gemini_mini(question):
         
     return answer
 
-def get_answer_by_gemini(question):
+def get_answer_by_gemini(question, API_KEY):
     answer_list_tmp = []
     answer = []
 
     for i in range(3):
         if i == 0:
-            answer_list_tmp.append(get_answer_by_gemini_mini(question))
+            answer_list_tmp.append(get_answer_by_gemini_mini(question, API_KEY))
         else:
-            answer_tmp = get_answer_by_gemini_mini(question)
+            answer_tmp = get_answer_by_gemini_mini(question, API_KEY)
             if answer_tmp in answer_list_tmp:
                 answer = answer_tmp
                 break
@@ -186,12 +195,11 @@ def get_answer_by_gemini(question):
 
     return answer
 
-
 # 通过所有方式获取答案
-def get_answer_by_all(question):
-    answer = get_answer_by_local(question)
+def get_answer_by_all(question, API_KEY, course_name):
+    answer = get_answer_by_local(question, course_name)
     if answer == []:
-        answer = get_answer_by_gemini(question)
+        if 'Gemini' in API_KEY.keys(): answer = get_answer_by_gemini(question, API_KEY['Gemini'])
         # answer = get_answer_by_gemini_mini(question)
         if answer == []:
             answer = get_answer_by_human(question)
@@ -204,12 +212,4 @@ def get_answer_by_all(question):
     return answer
 
 if __name__ == '__main__':
-#     a = get_answer_by_all(['单选题', 
-#                   '1927年蒋介石发动“四•一二”反革命政变的地点是()', 
-#                   ['A.北京', 'B.上海', 'C.广州', 'D.武汉']])
-
-    a = get_answer_by_all(['多选题', 
-                  '(形势与政策)22此题为防刷题而出,正常答题的同学请退出后再次进入答题或选择BCD选项,否则容易被判定为刷题.(请注意:如果在意正确率,请退出再重进;如果不在意正确率,那么请选择BCD选项)', 
-                  ['A.18', 'B.选它', 'C.选它', 'D.选它']])
-    
-    print(a)
+    get_answer_by_all(['单选题', '共产党员有权在党的会议上有根据地批评党的任何组织和任何党员,向党负责地揭发、检举()的事实,要求处分违法乱纪的党员,要求罢免或撤换不称职的干部.', ['党的任何组织和任何党员违法乱纪', '党的任何组织违法乱纪', '党的任何党员违法乱纪']], {})
