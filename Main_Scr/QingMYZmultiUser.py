@@ -16,6 +16,8 @@ def multi_user_main():
     for root, dirs, files in os.walk(user_data_dir):
         for file in files:
             if file.endswith('.json'):
+                with open(os.path.join(root, 'a.log'), 'a', encoding='utf-8') as f:
+                    f.write(os.path.join(root, file)+'\n')
                 Q = QingMYZClass(os.path.join(root, file))
                 Q.mainProcess()
                 Q.del__()

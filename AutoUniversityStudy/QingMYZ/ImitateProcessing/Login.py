@@ -1,10 +1,11 @@
-import requests
-from Crypto.Cipher import PKCS1_v1_5
-from Crypto.PublicKey import RSA
 import base64
 import re
+import requests
 
-from selenium.webdriver.common.by import By
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
+
+from AutoUniversityStudy.QingMYZ.ImitateProcessing.AntiRobotDetection import get_ua
 
 # 登入用戶
 def login_user_by_verify_request(driver, verify_request_url):
@@ -61,7 +62,7 @@ def get_verify_request(access_token):
         "authority": "api.uyiban.com",
         "AppVersion": "5.0.17",
         "x-requested-with": "com.yiban.app",
-        "user-agent":"Mozilla/5.0 (Linux; Android 12; XIAOMI Build/SKQ1.211006.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/112.0.5615.48 Mobile Safari/537.36;webank/h5face;webank/1.0 yiban_android/5.0.17"
+        "user-agent": get_ua() + ";webank/h5face;webank/1.0 yiban_android/5.0.17"
         }
     iapp = requests.get("http://f.yiban.cn/iapp/index?act=iapp76127", headers=HEADERS, allow_redirects=False, cookies=COOKIES) # 利用 loginToken 访问获取 verifyRequest跳转数据
     act = iapp.headers["Location"] # 返回302跳转目标

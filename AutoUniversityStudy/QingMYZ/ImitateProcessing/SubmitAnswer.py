@@ -1,8 +1,9 @@
-from AutoUniversityStudy.QingMYZ.ImitateProcessing.StandardQuestion import standard_question
+import re
 
 from selenium.webdriver.common.by import By
 from time import sleep
-import re
+
+from AutoUniversityStudy.QingMYZ.ImitateProcessing.StandardQuestion import standard_question
 
 # 判断是否有频率限制
 def ban_quickly(driver):
@@ -51,7 +52,7 @@ def over_time(driver):
         return False
 
 # 点击答案
-def click_answer(driver, answer, question_type):
+def click_answer(driver, answer, question_type, question):
     right_answer = ''
     answer_sucess = False
 

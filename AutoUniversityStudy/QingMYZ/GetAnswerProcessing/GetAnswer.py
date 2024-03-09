@@ -1,8 +1,9 @@
 # 获取答案
-import pandas as pd
-from os.path import exists, abspath, dirname
-import requests
 import json
+import pandas as pd
+import requests
+
+from os.path import exists, abspath, dirname
 from time import sleep
 
 # 当前所在绝对路径
@@ -39,6 +40,8 @@ def get_answer_by_local(question, course_name):
         answer = answer.split(", ")
         for i in range(len(answer)):
             answer[i] = answer[i][1:-1]
+    else:
+        print('本地题库没有找到该题')
 
     return answer
 
@@ -75,6 +78,7 @@ def get_answer_by_human(question):
             answer = input('你的输入非法, 请在此处输入答案(序号,多个请用空格隔开):')
 
     for ans in answer_list:
+        ans = int(ans)
         answer.append(question[2][ans-1])
 
     return answer
@@ -184,8 +188,10 @@ def get_answer_by_gemini(question, API_KEY):
 
     for i in range(3):
         if i == 0:
+            print(f"正在获取gemini回答...({i})")
             answer_list_tmp.append(get_answer_by_gemini_mini(question, API_KEY))
         else:
+            print(f"正在获取gemini回答...({i})")
             answer_tmp = get_answer_by_gemini_mini(question, API_KEY)
             if answer_tmp in answer_list_tmp:
                 answer = answer_tmp
@@ -206,12 +212,13 @@ def get_answer_by_all(question, API_KEY, course_name):
             with open(API_KEY_File, 'r', encoding='utf-8') as f:
                 API_KEY = f.read()
             if API_KEY != '':
-                get_answer_by_gemini(question, API_KEY)
+                answer = get_answer_by_gemini(question, API_KEY)
 
         # answer = get_answer_by_gemini_mini(question)
         if answer == []:
-            answer = get_answer_by_human(question)
-            # answer = question[-1][0]
+            # answer = get_answer_by_human(question)
+            answer = question[-1][0]
+            print("随机答案：" + answer)
         else:
             print(f"gemini回答{answer}")
     else:
@@ -220,4 +227,6 @@ def get_answer_by_all(question, API_KEY, course_name):
     return answer
 
 if __name__ == '__main__':
-    get_answer_by_all(['单选题', '共产党员有权在党的会议上有根据地批评党的任何组织和任何党员,向党负责地揭发、检举()的事实,要求处分违法乱纪的党员,要求罢免或撤换不称职的干部.', ['党的任何组织和任何党员违法乱纪', '党的任何组织违法乱纪', '党的任何党员违法乱纪']], {})
+    get_answer_by_all(['单选题', '共产党员有权在党的会议上有根据地批评党的任何组织和任何党员,向党负责地揭发、检举()的事实,要求处分违法乱纪的党员,要求罢免或撤换不称职的干部.', ['党的任何组织和任何党员违法乱纪', '党的任何组织违法乱纪', '党的任何党员违法乱纪']], 
+                      {},
+                      '中国近现代史纲要')

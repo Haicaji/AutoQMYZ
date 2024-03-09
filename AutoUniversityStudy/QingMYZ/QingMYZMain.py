@@ -21,6 +21,7 @@ class QingMYZClass():
         self.__min_question_time = 5 #秒
         self.__low_right_rate = 0.65
         self.__top_right_rate = 1.00
+        self.__now_all_questions = 0
 
         # 初始化
         self.__getUserData()
@@ -84,6 +85,10 @@ class QingMYZClass():
             try:
                 # ---------答题环节----------
                 while True:
+                    if now_all_questions + self.__questions_num_now >= self.__aim_questions_num_total:
+                        print('已到达全部题目数目')
+                        break
+
                     print('-------------------------------')
                     # 记录开始时间
                     start_time = time.time()
@@ -94,6 +99,7 @@ class QingMYZClass():
                     # 判断是否出现刷题检测
                     if detect_error(question):
                         driver.refresh()
+                        continue
 
                     # 控制正确率
                     if now_all_questions > 20:
@@ -101,6 +107,8 @@ class QingMYZClass():
                             if (right_question+1) / (now_all_questions+1) > self.__top_right_rate :
                                 answer = [random.choice(question[2])]
                                 print(f"\n正确率过高警告, 随机选择答案{answer}\n")
+                            else:
+                                answer = get_answer_by_all(question, self.__api_key, self.__course_name)
                         else:
                             print("\n正确率过低警告!!!!!!!!!!!!!!!!!!\n")
                             # 查找答案
@@ -109,8 +117,12 @@ class QingMYZClass():
                         # 查找答案
                         answer = get_answer_by_all(question, self.__api_key, self.__course_name)
 
+                    if answer == []:
+                        driver.refresh()
+                        continue
+
                     # 点击答案
-                    right_answer, answer_sucess = click_answer(driver, answer, question[0])
+                    right_answer, answer_sucess = click_answer(driver, answer, question[0], question)
 
                     # 答题后
                     after_answer(question, right_answer, self.__course_name)
@@ -125,6 +137,7 @@ class QingMYZClass():
 
                     # 打印答案是否正确
                     now_all_questions += 1
+                    self.__now_all_questions += 1
                     if answer_sucess:
                         right_question += 1
                         print('回答正确')
@@ -141,8 +154,8 @@ class QingMYZClass():
 
                     # 休眠一下
                     if self.__min_question_time > end_time - start_time:
+                        print(f'补偿做题时间:{self.__min_question_time - (end_time - start_time):.2f}')
                         sleep(self.__min_question_time - (end_time - start_time))
-                        print(f'补偿做题时间:{self.__min_question_time - (end_time - start_time)}')
 
                     # 输出统计时间
                     all_time += end_time - start_time
@@ -150,18 +163,19 @@ class QingMYZClass():
 
                     sleep(1)
 
-                    if now_all_questions >= self.__questions_num_day_max:
+                    if self.__now_all_questions >= self.__questions_num_day_max:
+                        print('单轮答题数量上限')
                         driver.quit()
                         break
                 break
             except Exception as e:
                 try_times += 1
-                if try_times > 1:
+                if try_times > 10:
                     raise e
                 driver.refresh()
-        
+
         # 更新用户数据
-        self.__questions_num_now += now_all_questions
+        self.__questions_num_now += self.__now_all_questions
     
     # 创建浏览器控制驱动
     def __createDriver(self):
@@ -177,7 +191,16 @@ class QingMYZClass():
         # 设置chrome浏览器路径
         options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
 
-        # 随机生成UA
+        # 设置无头浏览器
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
+        
+        # 忽略浏览器控制警告
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
+        # 设置随机生成UA
+        ua = get_ua()
+        options.add_argument('user-agent=' + ua)
 
         # 设置chromedriver路径
         service = Service(f"{current_dir}\\ChromeWithDriver\\chromedriver112.exe")
@@ -243,6 +266,9 @@ class QingMYZClass():
         if user_data['answer_setting']['min_question_time'] != '':
             self.__min_question_time = user_data['answer_setting']['min_question_time']
             self.__min_question_time = float(self.__min_question_time)
+        if user_data['other']['now_all_questions'] != '':
+            self.__now_all_questions = user_data['other']['now_all_questions']
+            self.__now_all_questions = int(self.__now_all_questions)
                 
     # 更新用户数据
     def __updataUserData(self):

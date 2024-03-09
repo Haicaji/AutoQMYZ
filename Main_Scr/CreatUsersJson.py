@@ -44,7 +44,7 @@ def creat_user_json():
             'min_question_time': ''
             },
         'now': {'questions_num_now': ''},
-        'other': {}
+        'other': {'now_all_questions': 0}
     }
 
     # 判断数据文件是否已经存在
