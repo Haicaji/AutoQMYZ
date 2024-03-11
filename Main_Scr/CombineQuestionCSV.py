@@ -2,8 +2,8 @@ import pandas as pd
 import os
 
 # 题库位置
-question_data_dir = './question_data/'
-question_data_main = './question_data/question_main.csv'
+question_data_dir = ''
+question_data_main = ''
 
 # 去重率统计
 quesion_num = 0
@@ -75,4 +75,6 @@ def get_question_csv():
         combine_question_csv(csv_file)
 
 if __name__ == '__main__':
+    question_data_dir = input('请输入题库目录:').replace("\"", "")
+    question_data_main = input('请输入主题库文件路径:').replace("\"", "")
     get_question_csv()

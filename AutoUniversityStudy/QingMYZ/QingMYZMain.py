@@ -21,13 +21,18 @@ class QingMYZClass():
         self.__min_question_time = 5 #秒
         self.__low_right_rate = 0.65
         self.__top_right_rate = 1.00
+
         self.__now_all_questions = 0
+        self.finish = False
 
         # 初始化
         self.__getUserData()
 
     def del__(self):
         self.__updataUserData()
+
+        return self.finish
+
     
     # 主流程
     def mainProcess(self):
@@ -87,6 +92,7 @@ class QingMYZClass():
                 while True:
                     if now_all_questions + self.__questions_num_now >= self.__aim_questions_num_total:
                         print('已到达全部题目数目')
+                        self.finish = True
                         break
 
                     print('-------------------------------')
@@ -102,20 +108,26 @@ class QingMYZClass():
                         continue
 
                     # 控制正确率
-                    if now_all_questions > 20:
-                        if now_right_rate > self.__low_right_rate:
-                            if (right_question+1) / (now_all_questions+1) > self.__top_right_rate :
-                                answer = [random.choice(question[2])]
-                                print(f"\n正确率过高警告, 随机选择答案{answer}\n")
+                    if self.__low_right_rate == 1:
+                        answer = get_answer_by_all_right(question, self.__course_name)
+                        if answer == []:
+                            driver.refresh()
+                            continue
+                    else:
+                        if now_all_questions > 20:
+                            if now_right_rate > self.__low_right_rate:
+                                if (right_question+1) / (now_all_questions+1) > self.__top_right_rate :
+                                    answer = [random.choice(question[2])]
+                                    print(f"\n正确率过高警告, 随机选择答案{answer}\n")
+                                else:
+                                    answer = get_answer_by_all(question, self.__api_key, self.__course_name)
                             else:
+                                print("\n正确率过低警告!!!!!!!!!!!!!!!!!!\n")
+                                # 查找答案
                                 answer = get_answer_by_all(question, self.__api_key, self.__course_name)
                         else:
-                            print("\n正确率过低警告!!!!!!!!!!!!!!!!!!\n")
                             # 查找答案
                             answer = get_answer_by_all(question, self.__api_key, self.__course_name)
-                    else:
-                        # 查找答案
-                        answer = get_answer_by_all(question, self.__api_key, self.__course_name)
 
                     if answer == []:
                         driver.refresh()
@@ -166,11 +178,13 @@ class QingMYZClass():
                     if self.__now_all_questions >= self.__questions_num_day_max:
                         print('单轮答题数量上限')
                         driver.quit()
+                        self.__now_all_questions = 0
                         break
                 break
             except Exception as e:
                 try_times += 1
                 if try_times > 10:
+                    self.__updataUserData()
                     raise e
                 driver.refresh()
 
@@ -276,5 +290,6 @@ class QingMYZClass():
             user_data = json.load(f)
     
         with open(self.__user_data_file, 'w', encoding='utf-8') as f:
-            user_data['now']['questions_num_now'] = self.__questions_num_now
+            user_data['now']['questions_num_now'] = self.__questions_num_now - self.__now_all_questions
+            user_data['other']['now_all_questions'] = self.__now_all_questions
             json.dump(user_data, f, separators=(',', ':'), ensure_ascii=False)

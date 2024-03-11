@@ -226,6 +226,11 @@ def get_answer_by_all(question, API_KEY, course_name):
 
     return answer
 
+def get_answer_by_all_right(question, course_name):
+    answer = get_answer_by_local(question, course_name)
+
+    return answer
+
 if __name__ == '__main__':
     get_answer_by_all(['单选题', '共产党员有权在党的会议上有根据地批评党的任何组织和任何党员,向党负责地揭发、检举()的事实,要求处分违法乱纪的党员,要求罢免或撤换不称职的干部.', ['党的任何组织和任何党员违法乱纪', '党的任何组织违法乱纪', '党的任何党员违法乱纪']], 
                       {},
