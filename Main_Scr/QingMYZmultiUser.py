@@ -24,6 +24,7 @@ def multi_user_main():
                 os.makedirs(finish_dir)
             for file in files:
                 if file.endswith('.json'):
+                    print(file)
                     with open(os.path.join(root, 'log.txt'), 'a', encoding='utf-8') as f:
                         f.write('-----------------------------\n')
                         f.write('开始进行'+os.path.join(root, file)+'\n')

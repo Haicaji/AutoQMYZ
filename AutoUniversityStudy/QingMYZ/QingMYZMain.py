@@ -13,17 +13,17 @@ class QingMYZClass():
         self.__user_data_file = user_data_file
         self.__login_key = []
         self.__api_key = {}
-        self.__aim_questions_num_total = 0
-        self.__questions_num_now = 0
-        self.__questions_num_day_max = 0
+        self.__aim_questions_num_total = 0 # 总目标题数
+        self.__questions_all_num_now = 0 # 当前所有做过的题数
+        self.__questions_num_day_max = 0 # 每天上限题数
         self.__course_name = ''
         # 可选参数
         self.__min_question_time = 5 #秒
         self.__low_right_rate = 0.65
         self.__top_right_rate = 1.00
 
-        self.__now_all_questions = 0
-        self.finish = False
+        self.__last_time_question_num = 0 # 上一次中断做到的题数
+        self.finish = False # 是否已经完成
 
         # 初始化
         self.__getUserData()
@@ -37,7 +37,7 @@ class QingMYZClass():
     # 主流程
     def mainProcess(self):
         # 获取浏览器控制驱动
-        try_times = 0
+        try_times = 0 # 异常后再次尝试次数
         while True:
             try:
                 driver = self.__createDriver()
@@ -80,18 +80,20 @@ class QingMYZClass():
                     raise e
 
         # 当轮数据
-        now_all_questions = 0 # 当轮总题数
-        right_question = 0 # 当轮正确总题数
-        all_time = 0 # 当轮总时间
+        now_all_questions = 0 # 当轮已做的题数
+        right_question = 0 # 当轮正确的题数
+        all_time = 0 # 当轮已用时
 
         # 作答(防止特殊情况异常中断)
         try_times = 0
+        try_times_max = 10
         while True:
             try:
                 # ---------答题环节----------
                 while True:
-                    if now_all_questions + self.__questions_num_now >= self.__aim_questions_num_total:
+                    if self.__questions_all_num_now + self.__last_time_question_num >= self.__aim_questions_num_total:
                         print('已到达全部题目数目')
+                        self.__last_time_question_num = 0
                         self.finish = True
                         break
 
@@ -129,10 +131,6 @@ class QingMYZClass():
                             # 查找答案
                             answer = get_answer_by_all(question, self.__api_key, self.__course_name)
 
-                    if answer == []:
-                        driver.refresh()
-                        continue
-
                     # 点击答案
                     right_answer, answer_sucess = click_answer(driver, answer, question[0], question)
 
@@ -148,8 +146,8 @@ class QingMYZClass():
                     print('选项:', question[2])
 
                     # 打印答案是否正确
-                    now_all_questions += 1
-                    self.__now_all_questions += 1
+                    now_all_questions += 1 # 当前轮数做的题数,不包括中断前,主要用于计算正确率
+                    self.__last_time_question_num += 1
                     if answer_sucess:
                         right_question += 1
                         print('回答正确')
@@ -172,24 +170,28 @@ class QingMYZClass():
                     # 输出统计时间
                     all_time += end_time - start_time
                     print(f'已经答题{all_time:.2f}s, 本题用时{end_time - start_time:.2f}s')
+                    print(f"其他信息: trytime:{try_times}")
 
                     sleep(1)
 
-                    if self.__now_all_questions >= self.__questions_num_day_max:
+                    if self.__last_time_question_num >= self.__questions_num_day_max:
                         print('单轮答题数量上限')
                         driver.quit()
-                        self.__now_all_questions = 0
+                        if self.__last_time_question_num + self.__questions_all_num_now >= self.__aim_questions_num_total:
+                            print('已到达全部题目数目')
+                            self.finish = True
                         break
                 break
             except Exception as e:
                 try_times += 1
-                if try_times > 10:
+                if try_times > try_times_max:
                     self.__updataUserData()
                     raise e
                 driver.refresh()
 
         # 更新用户数据
-        self.__questions_num_now += self.__now_all_questions
+        self.__questions_all_num_now += self.__last_time_question_num
+        self.__last_time_question_num = 0
     
     # 创建浏览器控制驱动
     def __createDriver(self):
@@ -266,11 +268,11 @@ class QingMYZClass():
             self.__course_name = user_data['answer_setting']['course_name']
         else:
             raise ValueError('答题设置数据不完整')
-        if user_data['now']['questions_num_now'] != '':
-            self.__questions_num_now = user_data['now']['questions_num_now']
-            self.__questions_num_now = int(self.__questions_num_now)
+        if user_data['now']['questions_all_num_now'] != '':
+            self.__questions_all_num_now = user_data['now']['questions_all_num_now']
+            self.__questions_all_num_now = int(self.__questions_all_num_now)
         else:
-            self.__questions_num_now = 0
+            self.__questions_all_num_now = 0
         if user_data['answer_setting']['low_right_rate'] != '':
             self.__low_right_rate = user_data['answer_setting']['low_right_rate']
             self.__low_right_rate = float(self.__low_right_rate)
@@ -280,9 +282,9 @@ class QingMYZClass():
         if user_data['answer_setting']['min_question_time'] != '':
             self.__min_question_time = user_data['answer_setting']['min_question_time']
             self.__min_question_time = float(self.__min_question_time)
-        if user_data['other']['now_all_questions'] != '':
-            self.__now_all_questions = user_data['other']['now_all_questions']
-            self.__now_all_questions = int(self.__now_all_questions)
+        if user_data['other']['last_time_question_num'] != '':
+            self.__last_time_question_num = user_data['other']['last_time_question_num']
+            self.__last_time_question_num = int(self.__last_time_question_num)
                 
     # 更新用户数据
     def __updataUserData(self):
@@ -290,6 +292,9 @@ class QingMYZClass():
             user_data = json.load(f)
     
         with open(self.__user_data_file, 'w', encoding='utf-8') as f:
-            user_data['now']['questions_num_now'] = self.__questions_num_now - self.__now_all_questions
-            user_data['other']['now_all_questions'] = self.__now_all_questions
+            if self.finish == True:
+                user_data['now']['questions_all_num_now'] = 0
+            else:
+                user_data['now']['questions_all_num_now'] = self.__questions_all_num_now
+            user_data['other']['last_time_question_num'] = self.__last_time_question_num
             json.dump(user_data, f, separators=(',', ':'), ensure_ascii=False)

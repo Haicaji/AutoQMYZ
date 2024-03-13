@@ -43,8 +43,8 @@ def creat_user_json():
             'top_right_rate': '',
             'min_question_time': ''
             },
-        'now': {'questions_num_now': ''},
-        'other': {'now_all_questions': 0}
+        'now': {'questions_all_num_now': ''},
+        'other': {'last_time_question_num': 0}
     }
 
     # 判断数据文件是否已经存在
