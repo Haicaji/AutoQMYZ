@@ -74,4 +74,5 @@ def login_user_by_code(driver, name, passwd):
     yb_uid, access_token = login(name, passwd)
     verify_request = get_verify_request(access_token)
     verify_request_url = f'http://112.5.88.114:31101/yiban-web/stu/homePage.jhtml?verify_request={verify_request}&yb_uid={yb_uid}'
+    print(verify_request_url)
     login_user_by_verify_request(driver, verify_request_url)
