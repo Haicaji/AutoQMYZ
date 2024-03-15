@@ -56,3 +56,41 @@ AutoUniversityStudy/
 |-- README.md
 |-- TODO.md
 ```
+
+## 平台通用框架(可以借鉴)
+
+### 创建一个平台类
+
+直接在一个 **.py** 文件中创建一个类
+
+该类就只接受用户配置文件
+
+```python
+class PlatformName:
+    #
+    def __init__(self, json_file):
+        # 平台需要的参数
+        self.value = []
+
+    def __del__(self):
+        # 完成操作后需要做的事情
+        pass
+
+    # 主流程
+    def mainProcess(self):
+        pass
+
+    # 获取用户配置文件的数据
+    def __getUserData(self):
+        pass
+
+    # 更新用户配置文件的数据
+    def __updateUserData(self):
+        pass
+```
+
+### 其他操作代码
+
+然后其他的操作代码放在与该类同级的目录中
+
+我这里是在进行了以下分类

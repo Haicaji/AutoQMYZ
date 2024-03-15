@@ -17,6 +17,7 @@ class QingMYZClass():
         self.__questions_all_num_now = 0 # 当前所有做过的题数
         self.__questions_num_day_max = 0 # 每天上限题数
         self.__course_name = ''
+        self.__verify_request = ''
         # 可选参数
         self.__min_question_time = 5 #秒
         self.__low_right_rate = 0.65
@@ -54,7 +55,7 @@ class QingMYZClass():
             try:
                 if len(self.__login_key) > 1:
                     # 账号密码登入
-                    login_user_by_code(driver, 
+                    self.__verify_request = login_user_by_code(driver, 
                                        self.__login_key[0], self.__login_key[1])
                 else:
                     # verify_request登入
@@ -292,6 +293,9 @@ class QingMYZClass():
             user_data = json.load(f)
     
         with open(self.__user_data_file, 'w', encoding='utf-8') as f:
+            if self.__verify_request != '':
+                user_data['user']['verify_request'] = self.__verify_request
+                
             if self.finish == True:
                 user_data['now']['questions_all_num_now'] = 0
             else:
