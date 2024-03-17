@@ -84,6 +84,7 @@ class QingMYZClass():
         now_all_questions = 0 # 当轮已做的题数
         right_question = 0 # 当轮正确的题数
         all_time = 0 # 当轮已用时
+        robot_detected_time = 0
 
         # 作答(防止特殊情况异常中断)
         try_times = 0
@@ -108,6 +109,7 @@ class QingMYZClass():
                     # 判断是否出现刷题检测
                     if detect_error(question):
                         driver.refresh()
+                        robot_detected_time += 1
                         continue
 
                     # 控制正确率
@@ -174,7 +176,7 @@ class QingMYZClass():
                     # 输出统计时间
                     all_time += end_time - start_time
                     print(f'已经答题{all_time:.2f}s, 本题用时{end_time - start_time:.2f}s')
-                    print(f"其他信息: trytime:{try_times}")
+                    print(f"其他信息: trytime:{try_times}, RobotDetectedtime:{robot_detected_time}")
 
                     sleep(1)
 
