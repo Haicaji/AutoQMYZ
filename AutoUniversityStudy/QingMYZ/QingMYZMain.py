@@ -166,7 +166,10 @@ class QingMYZClass():
                     # 休眠一下
                     if self.__min_question_time > end_time - start_time:
                         print(f'补偿做题时间:{self.__min_question_time - (end_time - start_time):.2f}')
-                        sleep(self.__min_question_time - (end_time - start_time))
+                        # 随机生成一个数
+                        sleep_time = random.randint(self.__min_question_time - (end_time - start_time) - 2, 
+                                                    self.__min_question_time - (end_time - start_time) + 2)
+                        sleep(sleep_time)
 
                     # 输出统计时间
                     all_time += end_time - start_time
