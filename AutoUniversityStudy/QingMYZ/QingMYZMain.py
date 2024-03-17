@@ -167,15 +167,19 @@ class QingMYZClass():
 
                     # 休眠一下
                     if self.__min_question_time > end_time - start_time:
-                        print(f'补偿做题时间:{self.__min_question_time - (end_time - start_time):.2f}')
-                        # 随机生成一个数
-                        sleep_time = random.randint(self.__min_question_time - (end_time - start_time) - 2, 
-                                                    self.__min_question_time - (end_time - start_time) + 2)
+                        if self.__min_question_time - (end_time - start_time) > 2:
+                            sleep_time = random.uniform(self.__min_question_time - (end_time - start_time) - 2, 
+                                                        self.__min_question_time - (end_time - start_time) + 2)
+                        else:
+                            sleep_time = random.uniform(self.__min_question_time - (end_time - start_time), 
+                                                        self.__min_question_time - (end_time - start_time) + 2)
+                        sleep_time = round(sleep_time, 2)
+                        print(f'补偿做题时间:{sleep_time:.2f}')      
                         sleep(sleep_time)
 
                     # 输出统计时间
                     all_time += end_time - start_time
-                    print(f'已经答题{all_time:.2f}s, 本题用时{end_time - start_time:.2f}s')
+                    print(f'已经答题{all_time:.2f}s, 本题用时{end_time - start_time:.2f}s, 总共用时{(end_time - start_time)+sleep_time:.2f}s')
                     print(f"其他信息: trytime:{try_times}, RobotDetectedtime:{robot_detected_time}")
 
                     sleep(1)
