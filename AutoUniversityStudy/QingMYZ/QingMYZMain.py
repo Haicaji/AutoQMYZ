@@ -18,6 +18,7 @@ class QingMYZClass():
         self.__questions_num_day_max = 0 # 每天上限题数
         self.__course_name = ''
         self.__verify_request = ''
+        self.__UA = ''
         # 可选参数
         self.__min_question_time = 5 #秒
         self.__low_right_rate = 0.65
@@ -39,24 +40,23 @@ class QingMYZClass():
     def mainProcess(self):
         # 获取浏览器控制驱动
         try_times = 0 # 异常后再次尝试次数
-        while True:
+        while True: 
             try:
-                driver = self.__createDriver()
+                driver, self.__UA = self.__createDriver(self.__UA)
                 break
             except Exception as e:
                 try_times += 1
                 if try_times > 1:
                     print('创建浏览器控制驱动失败')
                     raise e
-
         # 登入
         try_times = 0 # 异常后再次尝试次数
         while True:
             try:
                 if len(self.__login_key) > 1:
                     # 账号密码登入
-                    self.__verify_request = login_user_by_code(driver, 
-                                       self.__login_key[0], self.__login_key[1])
+                    self.__verify_request, self.__UA = login_user_by_code(driver, 
+                                       self.__login_key[0], self.__login_key[1], self.__UA)
                 else:
                     # verify_request登入
                     login_user_by_verify_request(driver, 
@@ -121,7 +121,9 @@ class QingMYZClass():
                     else:
                         if now_all_questions > 20:
                             if now_right_rate > self.__low_right_rate:
-                                if (right_question+1) / (now_all_questions+1) > self.__top_right_rate :
+                                # 随机生成一个最高正确率
+                                top_right_rate_random = random.uniform(self.__top_right_rate - 0.015, self.__top_right_rate + 0.015)
+                                if (right_question+1) / (now_all_questions+1) > top_right_rate_random:
                                     answer = [random.choice(question[2])]
                                     print(f"\n正确率过高警告, 随机选择答案{answer}\n")
                                 else:
@@ -204,7 +206,7 @@ class QingMYZClass():
         self.__last_time_question_num = 0
     
     # 创建浏览器控制驱动
-    def __createDriver(self):
+    def __createDriver(self, UA):
         # 当前所在绝对路径
         current_dir = os.path.dirname(os.path.abspath(__file__))
         # 返回上一级目录
@@ -218,15 +220,18 @@ class QingMYZClass():
         options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
 
         # 设置无头浏览器
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
+        # options.add_argument('--headless')
+        # options.add_argument('--disable-gpu')
         
         # 忽略浏览器控制警告
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
         # 设置随机生成UA
-        ua = get_ua()
-        options.add_argument('user-agent=' + ua)
+        if UA != "":
+            ua = UA
+        else:
+            ua = get_ua()
+        options.add_argument('user-agent=' + ua + ";webank/h5face;webank/1.0 yiban_android/5.0.17")
 
         # 设置chromedriver路径
         service = Service(f"{current_dir}\\ChromeWithDriver\\chromedriver112.exe")
@@ -240,7 +245,7 @@ class QingMYZClass():
         # 最大化窗口
         driver.maximize_window()
 
-        return driver
+        return driver, ua
 
     # 获取用户数据
     def __getUserData(self):
@@ -295,6 +300,8 @@ class QingMYZClass():
         if user_data['other']['last_time_question_num'] != '':
             self.__last_time_question_num = user_data['other']['last_time_question_num']
             self.__last_time_question_num = int(self.__last_time_question_num)
+        if user_data['other']['UA'] != "":
+            self.__UA = user_data['other']['UA']
                 
     # 更新用户数据
     def __updataUserData(self):
@@ -310,4 +317,9 @@ class QingMYZClass():
             else:
                 user_data['now']['questions_all_num_now'] = self.__questions_all_num_now
             user_data['other']['last_time_question_num'] = self.__last_time_question_num
+
+            if self.__UA != "":
+                user_data['other']['UA'] = self.__UA
+
             json.dump(user_data, f, separators=(',', ':'), ensure_ascii=False)
+        

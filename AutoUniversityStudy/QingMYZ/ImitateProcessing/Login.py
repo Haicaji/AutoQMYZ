@@ -11,6 +11,8 @@ from AutoUniversityStudy.QingMYZ.ImitateProcessing.AntiRobotDetection import get
 def login_user_by_verify_request(driver, verify_request_url):
     # 打开网页
     driver.get(verify_request_url)
+    # 刷新网页
+    driver.refresh()
 
 def encryptPassword(pwd):
     # 密码加密
@@ -53,7 +55,11 @@ def login(name, passwd):
     else:
         raise Exception("登录失败")
 
-def get_verify_request(access_token):
+def get_verify_request(access_token, UA):
+    if UA != "":
+        ua = UA
+    else:
+        ua = get_ua()
     COOKIES = {"loginToken": access_token}
     HEADERS = {
         "Origin": "m.yiban.cn",
@@ -62,19 +68,19 @@ def get_verify_request(access_token):
         "authority": "api.uyiban.com",
         "AppVersion": "5.0.17",
         "x-requested-with": "com.yiban.app",
-        "user-agent": get_ua() + ";webank/h5face;webank/1.0 yiban_android/5.0.17"
+        "user-agent": ua + ";webank/h5face;webank/1.0 yiban_android/5.0.17"
         }
     iapp = requests.get("http://f.yiban.cn/iapp/index?act=iapp76127", headers=HEADERS, allow_redirects=False, cookies=COOKIES) # 利用 loginToken 访问获取 verifyRequest跳转数据
     act = iapp.headers["Location"] # 返回302跳转目标
     verifyRequest = re.findall(r"verify_request=(.*?)&", act)[0] # 正则取302跳转目标，得到 verify_request 数据
 
-    return verifyRequest
+    return verifyRequest, ua
 
-def login_user_by_code(driver, name, passwd):
+def login_user_by_code(driver, name, passwd, UA):
     yb_uid, access_token = login(name, passwd)
-    verify_request = get_verify_request(access_token)
+    verify_request, UA = get_verify_request(access_token, UA)
     verify_request_url = f'http://112.5.88.114:31101/yiban-web/stu/homePage.jhtml?verify_request={verify_request}&yb_uid={yb_uid}'
     print(verify_request_url)
     login_user_by_verify_request(driver, verify_request_url)
 
-    return verify_request_url
+    return verify_request_url, UA
