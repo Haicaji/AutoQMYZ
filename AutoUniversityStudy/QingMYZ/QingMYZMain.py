@@ -122,7 +122,7 @@ class QingMYZClass():
                         if now_all_questions > 20:
                             if now_right_rate > self.__low_right_rate:
                                 # 随机生成一个最高正确率
-                                top_right_rate_random = random.uniform(self.__top_right_rate - 0.015, self.__top_right_rate + 0.015)
+                                top_right_rate_random = random.uniform(self.__top_right_rate - 0.05, self.__top_right_rate + 0.05)
                                 if (right_question+1) / (now_all_questions+1) > top_right_rate_random:
                                     answer = [random.choice(question[2])]
                                     print(f"\n正确率过高警告, 随机选择答案{answer}\n")
@@ -220,8 +220,8 @@ class QingMYZClass():
         options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
 
         # 设置无头浏览器
-        # options.add_argument('--headless')
-        # options.add_argument('--disable-gpu')
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
         
         # 忽略浏览器控制警告
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
