@@ -220,8 +220,8 @@ class QingMYZClass():
         options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
 
         # 设置无头浏览器
-        # options.add_argument('--headless')
-        # options.add_argument('--disable-gpu')
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
         
         # 忽略浏览器控制警告
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
