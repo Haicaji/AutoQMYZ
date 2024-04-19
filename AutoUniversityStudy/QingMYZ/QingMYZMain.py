@@ -277,6 +277,8 @@ class QingMYZClass():
         if user_data['answer_setting']['questions_num_day_max'] != '':
             self.__questions_num_day_max = user_data['answer_setting']['questions_num_day_max']
             self.__questions_num_day_max = int(self.__questions_num_day_max)
+            # 增加随机范围
+            self.__questions_num_day_max += random.randint(0, 10)
         else:
             raise ValueError('答题设置数据不完整')
         if user_data['answer_setting']['course_name'] != '':
