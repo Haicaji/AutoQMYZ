@@ -22,11 +22,14 @@
 - UA 固定
 - 自动化过程可视化
 
-![image0](images/image0.png)
-![image1](images/image1.png)
-![image2](images/image2.png)
-![image3](images/image3.png)
-![image4](images/image4.png)
+<div align="center">
+  <img src="images/image0.png" width="400" alt="image0" />
+  <img src="images/image1.png" width="400" alt="image1" />
+  <img src="images/image2.png" width="400" alt="image2" />
+  <br>
+  <img src="images/image3.png" width="200" alt="image3" />
+  <img src="images/image4.png" width="200" alt="image4" />
+</div>
 
 ## 快速开始（Release 版本）
 
