@@ -1,10 +1,24 @@
 # AutoQMYZ
 
-青马易战自动答题脚本
+青马易战自动答题脚本, [Github 项目地址](https://github.com/Haicaji/AutoQMYZ)
 
 ## 版权声明
 
 遵循 AGPL v3.0 协议
+
+## 功能支持
+
+- 多用户登录, 多任务并行
+- AI/题库/人工/随机四种答题模式随意调整顺序
+- 正确率/速率多维度控制
+- UA 固定
+- 自动化过程可视化
+
+![image0](images/image0.png)
+![image1](images/image1.png)
+![image2](images/image2.png)
+![image3](images/image3.png)
+![image4](images/image4.png)
 
 ## 快速开始（Release 版本）
 
@@ -20,7 +34,7 @@
 
 ### 3. 配置 AI API
 
-编辑根目录下的 `config.toml`，填入你的 API 密钥和模型信息。支持 OpenAI 兼容的各大 AI API（OpenAI、DeepSeek、通义千问、Gemini 等）：
+编辑根目录下的 `config.toml`(或者进入WebUI进行配置)，填入你的 API 密钥和模型信息。支持 OpenAI 兼容的各大 AI API（OpenAI、DeepSeek、通义千问、Gemini 等）：
 
 ```toml
 [ai]
@@ -139,3 +153,11 @@ Release workflow 会执行以下打包步骤：
 4. 复制题库、配置模板、README、LICENSE 和源码目录
 5. 校验 zip 中是否包含 exe、题库、前端产物、Chrome、ChromeDriver 和 `stealth.min.js`
 6. 上传 `AutoQMYZ-vX.X.X.zip` 到 GitHub Release
+
+## 相关项目
+
+- https://github.com/shibig666/QMYZ
+- https://github.com/Xuuyuan/QingmaKiller
+- https://github.com/shibig666/QMYZ_Android
+- https://github.com/ZeroNinx/QM_Terminator
+- https://github.com/shibig666/QMYZ-MCP
