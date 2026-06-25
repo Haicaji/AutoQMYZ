@@ -1,4 +1,6 @@
-# AutoUniversityStudy
+# AutoQMYZ
+
+青马易站自动答题脚本
 
 ## 版权声明
 
@@ -6,91 +8,75 @@
 
 ## 目录结构
 
-如果新增新的平台脚本, 请按照如下结构部署,方便后续维护
-
 ```
-AutoUniversityStudy/
-|-- AutoBat/ # bat一键启动脚本
-|   |-- BeginQingMYZ.bat # 特定平台的bat启动脚本
-|   |-- CombineQuestionCSV.bat # 合并题库
-|   |-- ...bat # 其他bat脚本
+AutoQMYZ/
+|-- AutoBat/                    # bat一键启动脚本
+|   |-- BeginQingMYZ.bat        # 启动答题脚本
+|   |-- CombineQuestionCSV.bat  # 合并题库
+|   |-- CreatQingMYZUsersJson.bat # 创建用户配置
+|   |-- BatchModifyUserJson.bat # 批量修改用户配置
+|   |-- pipEnv.bat              # 安装依赖
 |
-|-- AutoUniversityStudy/ # 主体部分
-|   |-- QingMa/ # 特定平台的前后端处理文件
-|   |   |-- BackendProcessing/ # 后端处理文件(主要是获取答案)
-|   |   |   |-- ...py
-|   |   |
-|   |   |-- FrontendProcessing/ # 前端处理文件(主要是模拟点击及校验)
-|   |   |   |-- ...py
+|-- AutoQMYZ/                   # 核心答题模块
+|   |-- QingMYZMain.py          # 主类 QingMYZClass
+|   |-- GetAnswerProcessing/    # 获取答案模块
+|   |   |-- GetAnswer.py        # 本地题库/Gemini/人工 获取答案
 |   |
-|   |-- .../ # 等等其他平台
+|   |-- ImitateProcessing/      # 模拟浏览器操作模块
+|   |   |-- Login.py            # 登入
+|   |   |-- SubmitAnswer.py     # 提交答案
+|   |   |-- GetQuestion.py      # 获取题目
+|   |   |-- AfterAnswer.py      # 答题后操作(写入题库)
+|   |   |-- IntoAnswerWeb.py    # 进入答题页面
+|   |   |-- AntiRobotDetection.py # 防刷题检测
+|   |   |-- StandardQuestion.py # 题目标准化
 |
-|-- ChromeWithDriver/ # 内置Chrome浏览器及对应版本驱动, 不展开细说
+|-- ChromeWithDriver/           # 内置Chrome浏览器及对应版本驱动
 |
-|-- Data/ # 数据文件(该文件夹内均为敏感信息, 请不要git上传)
-|   |-- API_key/ # 存放需要调用的API密钥
-|   |   |-- Gemini/ # 分平台存储
-|   |   |   |-- key.txt
-|   |   |
-|   |   |-- .../ # 其他平台
+|-- Data/                       # 数据文件(该文件夹内均为敏感信息, 请不要git上传)
+|   |-- logs/                   # 运行日志目录(按天轮转)
 |   |
-|   |-- Quetion_data/ # 存放题库文件
-|   |   |-- QingMYZ/ # 分平台存储
-|   |   |   |-- ...csv # 数据格式待定
-|   |   |
-|   |   |-- .../ # 其他平台
+|   |-- Question_data/          # 存放题库文件
+|   |   |-- 课程名称.csv        # 按课程（题类）命名的题库文件
 |   |
-|   |-- User/ # 存放用户登入密钥及配置信息等, 便于多用户使用
-|   |   |-- QingMYZ/ # 分平台存储 内可以嵌套文件夹
-|   |   |   |-- finish/ # 全部完成的用户自动移入该目录
-|   |   |   |   |-- ...json
+|   |-- User/                   # 存放用户登入密钥及配置信息
+|   |   |-- finish/             # 全部完成的用户自动移入该目录
 |   |   |   |-- ...json
-|   |   |
-|   |   |-- .../ # 其他平台
+|   |   |-- ...json
 |
-|-- Main_Scr/ # 启动脚本
-|   |-- QingMYZmultiUser.py # 多用户使用脚本
-|   |-- CombineQuestionCSV.py # 合并题库
+|-- Main_Scr/                   # 启动脚本
+|   |-- QingMYZmultiUser.py     # 多用户答题
+|   |-- CreatQingMYZUsersJson.py # 创建用户配置
+|   |-- BatchModifyUserJson.py  # 批量修改用户配置
+|   |-- CombineQuestionCSV.py   # 合并题库
 |
-|-- Python3118/ # 内置Python3.11.8版本, 不展开细说
+|-- Python3118/                 # 内置Python3.11.8版本
+|-- config.toml                 # 全局配置文件（敏感信息，请勿git上传）
 |-- README.md
 |-- TODO.md
 ```
 
-## 平台通用框架(可以借鉴)
+## 使用说明
 
-### 创建一个平台类
+### 1. 安装依赖
 
-直接在一个 **.py** 文件中创建一个类
+双击 `AutoBat/pipEnv.bat` 安装所需 Python 依赖
 
-该类就只接受用户配置文件
+### 2. 配置全局参数与 AI API
 
-```python
-class PlatformName:
-    #
-    def __init__(self, json_file):
-        # 平台需要的参数
-        self.value = []
+编辑根目录下的 `config.toml`，填入你的 API 密钥和模型信息。支持 OpenAI 兼容的各大 AI API（OpenAI、DeepSeek、通义千问、Gemini 等）：
 
-    def __del__(self):
-        # 完成操作后需要做的事情
-        pass
-
-    # 主流程
-    def mainProcess(self):
-        pass
-
-    # 获取用户配置文件的数据
-    def __getUserData(self):
-        pass
-
-    # 更新用户配置文件的数据
-    def __updateUserData(self):
-        pass
+```toml
+[ai]
+api_key = "你的API密钥"
+base_url = "https://api.openai.com/v1"   # 可替换为其他兼容 API 地址
+model = "gpt-4o-mini"                    # 使用的模型名称
 ```
 
-### 其他操作代码
+### 3. 创建用户配置
 
-然后其他的操作代码放在与该类同级的目录中
+双击 `AutoBat/CreatQingMYZUsersJson.bat` 按提示创建用户 JSON 配置文件
 
-我这里是在进行了以下分类
+### 4. 开始答题
+
+双击 `AutoBat/BeginQingMYZ.bat` 启动自动答题

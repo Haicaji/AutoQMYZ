@@ -161,5 +161,6 @@ cython_debug/
 
 ChromeWithDriver/
 Data/User/
-Data/API_key/
+config.toml
+Data/logs/
 Python3118/
