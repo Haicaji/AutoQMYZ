@@ -2,6 +2,8 @@
 import json
 import pandas as pd
 import requests
+import time
+import re
 
 from os.path import exists, abspath, dirname
 from time import sleep
@@ -84,103 +86,85 @@ def get_answer_by_human(question):
     return answer
 
 # 通过gemini获取答案
-def get_answer_by_gemini_mini(question, API_KEY):
-    # 设置提问词
-    text = "我想问你一个" + question[0] + ", 题目是" + question[1] + ", 有这些选项"
-    i = 0
-    for option in question[2]:
-        text += chr(65 + i) + '.' + option + ", "
-        i += 1
-    text += "请你直接给我回答字母(如果是多选回复多个字母, 用空格隔开):"
+def get_answer_by_gemini_mini(question, api_key):
+    """
+    使用 Google Gemini 2.0 Flash API 获取多选题答案。
 
-    # 提示词参数
-    safetySettings = [{
-            "category": "HARM_CATEGORY_HARASSMENT",
-            "threshold": "BLOCK_NONE"
-        },
-        {
-            "category": "HARM_CATEGORY_HATE_SPEECH",
-            "threshold": "BLOCK_NONE"
-        },
-        {
-            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            "threshold": "BLOCK_NONE"
-        },
-        {
-            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-            "threshold": "BLOCK_NONE"
-        }]
-    generationConfig = {
-        "stopSequences": [
-            "Title"
-        ],
+    参数：
+    question: 一个三元组 (题型, 题目, 选项列表)
+    api_key: Google API 密钥
+
+    返回：
+    包含选中选项文字的列表。
+    """
+    # 构造提示词
+    prompt = (
+        f"我想问你一个{question[0]}，题目是{question[1]}，有这些选项："
+        + ", ".join(f"{chr(65+i)}.{opt}" for i, opt in enumerate(question[2]))
+        + "。请直接返回字母（多选请用空格分隔）："
+    )
+
+    # 安全设置
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT",  "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH",  "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+
+    # 生成配置
+    generation_config = {
         "temperature": 0,
         "maxOutputTokens": 800,
         "topP": 0.4,
-        "topK": 10
+        "topK": 10,
+        # 可选：指定 MIME 类型为 JSON
+        "responseMimeType": "application/json"
     }
 
-    # api地址
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:streamGenerateContent?key={API_KEY}"
+    # API 请求地址，使用 Gemini 2.0 Flash 模型
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
+    )
 
-    # 请求头
-    headers = {
-        'Content-Type': 'application/json',
-    }
-
-    # 请求数据
-    data = {
-        'safetySettings': safetySettings,
-        'generationConfig': generationConfig,
+    payload = {
         "contents": [
-            {
-                'role': 'user',
-                "parts": [
-                    {
-                        "text": text
-                     }
-                ]
-            }
-        ]
+            {"role": "user", "parts": [{"text": prompt}]}
+        ],
+        "safetySettings": safety_settings,
+        "generationConfig": generation_config
     }
-    try_times = 0
-    while True:
+
+    # 重试机制
+    for attempt in range(3):
         try:
-            # 请求
-            response = requests.post(url, headers=headers, data=json.dumps(data), stream=True)
-
-            # 打印请求结果
-            # print(response.json())
-
-            # 判断请求是否成功
-            if response.status_code != 200:
-                raise ValueError("Failed to generate response: " + response.text)
-
+            response = requests.post(
+                url,
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status()
             break
-        except Exception as e:
-            try_times += 1
-            if try_times > 3:
+        except requests.RequestException as e:
+            if attempt < 2:
+                time.sleep(3)
+            else:
+                print(f"请求失败: {e}")
                 return []
-            print(f"网络不稳定, 正在重试... {try_times}")
-            sleep(3)
 
-    # 接受答案
-    for line in response.iter_lines():
-        if b"text" in line:
-            answer = json.loads(line.decode('utf-8').split(':')[1])
-            break
-    
-    # 处理返回的答案
-    answer_list = answer.split(" ")
-    answer = []
-    for ans in answer_list:
-        try:
-            if ord(ans) >= 65 and ord(ans) < 65 + len(question[2]):
-                answer.append(question[2][ord(ans) - 65])
-        except:
-            break
-        
-    return answer
+    data = response.json()
+    # 提取模型返回文本
+    content_part = data.get("candidates", [])[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+
+    # 使用正则匹配所有大写字母作为答案
+    letters = re.findall(r"[A-Z]", content_part)
+    answers = []
+    for letter in letters:
+        idx = ord(letter) - 65
+        if 0 <= idx < len(question[2]):
+            answers.append(question[2][idx])
+    return answers
 
 def get_answer_by_gemini(question, API_KEY):
     answer_list_tmp = []

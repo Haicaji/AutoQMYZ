@@ -88,7 +88,7 @@ class QingMYZClass():
 
         # 作答(防止特殊情况异常中断)
         try_times = 0
-        try_times_max = 10
+        try_times_max = 30
         while True:
             try:
                 # ---------答题环节----------
