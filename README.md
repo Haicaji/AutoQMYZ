@@ -6,21 +6,55 @@
 
 遵循 AGPL v3.0 协议
 
+## 快速开始（Release 版本）
+
+> 推荐大多数用户使用此方式，无需安装 Python 环境。
+
+### 1. 下载
+
+前往 [Releases](../../releases) 页面，下载最新版本的 `AutoQMYZ-vX.X.X.zip`。
+
+### 2. 解压
+
+将 zip 文件解压到任意目录（路径中**不要包含中文或空格**）。
+
+### 3. 配置 AI API
+
+编辑根目录下的 `config.toml`，填入你的 API 密钥和模型信息。支持 OpenAI 兼容的各大 AI API（OpenAI、DeepSeek、通义千问、Gemini 等）：
+
+```toml
+[ai]
+api_key = "你的API密钥"
+base_url = "https://api.openai.com/v1"   # 可替换为其他兼容 API 地址
+model = "gpt-4o-mini"                    # 使用的模型名称
+```
+
+### 4. 启动程序
+
+双击 `AutoQMYZ.exe` 启动程序。
+
+### 5. 打开管理界面
+
+启动成功后，在浏览器中打开 [http://127.0.0.1:8000](http://127.0.0.1:8000) 即可进入 WebUI 管理界面。
+
+在管理界面中你可以：
+- 创建和管理用户
+- 配置答题任务（选择课程、设置题数、正确率等）
+- 启动/停止答题队列
+- 实时查看答题日志
+- 修改系统设置
+
 ## 目录结构
 
 ```
 AutoQMYZ/
-|-- AutoBat/                    # bat一键启动脚本
-|   |-- BeginQingMYZ.bat        # 启动答题脚本
-|   |-- CombineQuestionCSV.bat  # 合并题库
-|   |-- CreatQingMYZUsersJson.bat # 创建用户配置
-|   |-- BatchModifyUserJson.bat # 批量修改用户配置
-|   |-- pipEnv.bat              # 安装依赖
+|-- AutoQMYZ.exe                # 主程序（Release 版本）
+|-- AutoQMYZ.py                 # 主程序源码（开发版本）
 |
 |-- AutoQMYZ/                   # 核心答题模块
 |   |-- QingMYZMain.py          # 主类 QingMYZClass
 |   |-- GetAnswerProcessing/    # 获取答案模块
-|   |   |-- GetAnswer.py        # 本地题库/Gemini/人工 获取答案
+|   |   |-- GetAnswer.py        # 本地题库/AI/人工 获取答案
 |   |
 |   |-- ImitateProcessing/      # 模拟浏览器操作模块
 |   |   |-- Login.py            # 登入
@@ -32,51 +66,55 @@ AutoQMYZ/
 |   |   |-- StandardQuestion.py # 题目标准化
 |
 |-- ChromeWithDriver/           # 内置Chrome浏览器及对应版本驱动
+|   |-- stealth.min.js          # 反爬虫检测脚本
 |
-|-- Data/                       # 数据文件(该文件夹内均为敏感信息, 请不要git上传)
+|-- Data/                       # 数据文件
 |   |-- logs/                   # 运行日志目录(按天轮转)
-|   |
 |   |-- Question_data/          # 存放题库文件
-|   |   |-- 课程名称.csv        # 按课程（题类）命名的题库文件
-|   |
+|   |   |-- 课程名称.csv        # 按课程命名的题库文件
 |   |-- User/                   # 存放用户登入密钥及配置信息
-|   |   |-- finish/             # 全部完成的用户自动移入该目录
-|   |   |   |-- ...json
-|   |   |-- ...json
 |
-|-- Main_Scr/                   # 启动脚本
-|   |-- QingMYZmultiUser.py     # 多用户答题
-|   |-- CreatQingMYZUsersJson.py # 创建用户配置
-|   |-- BatchModifyUserJson.py  # 批量修改用户配置
-|   |-- CombineQuestionCSV.py   # 合并题库
+|-- WebUI/                      # Web管理界面
+|   |-- dist/                   # 编译后的前端静态文件
 |
-|-- Python3118/                 # 内置Python3.11.8版本
-|-- config.toml                 # 全局配置文件（敏感信息，请勿git上传）
+|-- config.toml                 # 全局配置文件
 |-- README.md
-|-- TODO.md
 ```
 
-## 使用说明
+## 开发者指南
 
-### 1. 安装依赖
+如果你希望从源码运行或参与开发：
 
-双击 `AutoBat/pipEnv.bat` 安装所需 Python 依赖
+### 环境要求
 
-### 2. 配置全局参数与 AI API
+- Python 3.12+
+- Node.js 18+
 
-编辑根目录下的 `config.toml`，填入你的 API 密钥和模型信息。支持 OpenAI 兼容的各大 AI API（OpenAI、DeepSeek、通义千问、Gemini 等）：
+### 安装依赖
 
-```toml
-[ai]
-api_key = "你的API密钥"
-base_url = "https://api.openai.com/v1"   # 可替换为其他兼容 API 地址
-model = "gpt-4o-mini"                    # 使用的模型名称
+```bash
+# Python 依赖
+pip install -r requirements.txt
+
+# 前端依赖（如需修改 WebUI）
+cd WebUI
+npm install
+npm run build
 ```
 
-### 3. 创建用户配置
+### 运行
 
-双击 `AutoBat/CreatQingMYZUsersJson.bat` 按提示创建用户 JSON 配置文件
+```bash
+python AutoQMYZ.py
+```
 
-### 4. 开始答题
+### 发布新版本
 
-双击 `AutoBat/BeginQingMYZ.bat` 启动自动答题
+推送一个以 `v` 开头的 tag 即可自动触发 GitHub Actions 构建并发布 Release：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+也可以在 GitHub Actions 页面手动触发 **Build and Release** workflow，输入版本号即可自动创建 tag 并发布。

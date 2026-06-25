@@ -6,6 +6,7 @@ import time
 import re
 import msvcrt
 import sys
+import random
 
 from os.path import exists, abspath, dirname
 from time import sleep
@@ -89,8 +90,22 @@ def get_answer_by_human(question):
 
     return answer
 
+def get_page_countdown(driver):
+    if driver is None:
+        return None
+    try:
+        from selenium.webdriver.common.by import By
+        element = driver.find_element(By.XPATH, "/html/body/div/div/div/div")
+        text = element.text.strip()
+        match = re.search(r'\d+', text)
+        if match:
+            return int(match.group())
+    except Exception:
+        pass
+    return None
+
 # 人工答题（带超时）
-def get_answer_by_human_timeout(question, timeout):
+def get_answer_by_human_timeout(question, timeout, driver=None):
     print(f"\n=================== 人工作答 (限时 {timeout} 秒) ===================")
     print(f"【题型】: {question[0]}")
     print(f"【题目】: {question[1]}")
@@ -103,30 +118,57 @@ def get_answer_by_human_timeout(question, timeout):
     if thread_name.startswith("task_"):
         task_id = thread_name[5:]
         
+        # 获取网页倒计时并动态计算实际超时
+        countdown = get_page_countdown(driver)
+        actual_timeout = timeout
+        if countdown is not None:
+            actual_timeout = min(countdown - 1, timeout)
+            print(f"[Manual] Page countdown is {countdown}s. Actual timeout set to {actual_timeout}s.")
+            
         # 将问题存入全局状态
         manual_questions[task_id] = {
             "question": question,
-            "timeout": timeout,
+            "timeout": actual_timeout,
             "start_time": time.time(),
             "answer": None
         }
         
         print(f"[Manual] Waiting for WebUI input for task: {task_id}...")
         start_time = time.time()
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < actual_timeout:
+            # 1. 检查 WebUI 的答案
             q_info = manual_questions.get(task_id)
             if q_info and q_info["answer"] is not None:
                 answer = q_info["answer"]
                 manual_questions.pop(task_id, None)
                 print(f"[Manual] Received WebUI answer: {answer}")
                 return answer
+                
+            # 2. 检查网页倒计时是否即将结束 (<=1秒 触发避险)
+            current_countdown = get_page_countdown(driver)
+            if current_countdown is not None and current_countdown <= 1:
+                print(f"[Manual] Page countdown reached {current_countdown}s (<=1s). Triggering emergency random selection.")
+                manual_questions.pop(task_id, None)
+                if len(question) > 2 and question[2]:
+                    r_ans = [random.choice(question[2])]
+                    print(f"【紧急避险】倒计时剩余 {current_countdown} 秒，强制随机答题: {r_ans}")
+                    return r_ans
+                return []
+                
             time.sleep(0.2)
             
         manual_questions.pop(task_id, None)
-        print("[Manual] Timeout, skipping...")
+        print("[Manual] Timeout or countdown expired. Failsafe random selection...")
+        if len(question) > 2 and question[2]:
+            return [random.choice(question[2])]
         return []
     else:
         # 控制台输入回退
+        countdown = get_page_countdown(driver)
+        actual_timeout = timeout
+        if countdown is not None:
+            actual_timeout = min(countdown - 1, timeout)
+            
         prompt = f"请在此处输入答案序号 (多个请用空格隔开，超时将跳过): "
         sys.stdout.write(prompt)
         sys.stdout.flush()
@@ -148,14 +190,26 @@ def get_answer_by_human_timeout(question, timeout):
                 else:
                     input_str += char
                     
-            if time.time() - start_time > timeout:
+            if time.time() - start_time > actual_timeout:
                 sys.stdout.write('\n[超时已过，跳过当前人工作答]\n')
+                if len(question) > 2 and question[2]:
+                    return [random.choice(question[2])]
+                return []
+                
+            # 命令行下实时倒计时避险检查
+            current_countdown = get_page_countdown(driver)
+            if current_countdown is not None and current_countdown <= 1:
+                sys.stdout.write('\n[网页倒计时即将结束 (<=1秒)，强制随机答题]\n')
+                if len(question) > 2 and question[2]:
+                    return [random.choice(question[2])]
                 return []
                 
             time.sleep(0.05)
             
         cleaned_input = input_str.strip()
         if not cleaned_input:
+            if len(question) > 2 and question[2]:
+                return [random.choice(question[2])]
             return []
             
         answer_list = cleaned_input.split()
@@ -169,6 +223,8 @@ def get_answer_by_human_timeout(question, timeout):
             except ValueError:
                 pass
                 
+        if not answer and len(question) > 2 and question[2]:
+            return [random.choice(question[2])]
         return answer
 
 # 通过 OpenAI 兼容 API 获取答案（单次调用）
@@ -260,15 +316,31 @@ def get_answer_by_ai(question, ai_config):
     return answer
 
 # 通过所有方式获取答案
-def get_answer_by_all(question, course_name):
+def get_answer_by_all(question, course_name, driver=None):
     # 加载答题优先级配置
     ans_config = load_answer_config()
     priority = ans_config.get("answer_priority", ["db", "ai", "manual", "random"])
     manual_timeout = ans_config.get("manual_timeout", 30.0)
     
+    # 紧急避险检查：如果页面倒计时已经 <= 1秒，直接强制随机，免去其他策略带来的额外延迟
+    countdown = get_page_countdown(driver)
+    if countdown is not None and countdown <= 1:
+        if len(question) > 2 and question[2]:
+            answer = [random.choice(question[2])]
+            print(f"【进入答题前紧急避险】倒计时已不足 {countdown} 秒 (<=1秒)，强制随机答题: {answer}")
+            return answer
+            
     answer = []
     
     for strategy in priority:
+        # 重复的避险检测 (在轮询各策略时)
+        current_countdown = get_page_countdown(driver)
+        if current_countdown is not None and current_countdown <= 1:
+            if len(question) > 2 and question[2]:
+                answer = [random.choice(question[2])]
+                print(f"【中途紧急避险】倒计时已不足 {current_countdown} 秒 (<=1秒)，强制随机答题: {answer}")
+                break
+                
         if strategy == "db":
             answer = get_answer_by_local(question, course_name)
             if answer:
@@ -282,19 +354,19 @@ def get_answer_by_all(question, course_name):
                     print(f"【AI】回答: {answer}")
                     break
         elif strategy == "manual":
-            answer = get_answer_by_human_timeout(question, manual_timeout)
+            answer = get_answer_by_human_timeout(question, manual_timeout, driver)
             if answer:
                 print(f"【人工】回答: {answer}")
                 break
         elif strategy == "random":
             if len(question) > 2 and question[2]:
-                answer = [question[2][0]]
+                answer = [random.choice(question[2])]
                 print(f"【随机】回答: {answer}")
                 break
                 
     if not answer:
         if len(question) > 2 and question[2]:
-            answer = [question[2][0]]
+            answer = [random.choice(question[2])]
             print(f"【保底随机】回答: {answer}")
             
     return answer

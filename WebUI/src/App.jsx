@@ -192,9 +192,9 @@ function App() {
   const [taskForm, setTaskForm] = useState({
     course_name: '',
     aim_questions_num_total: 100,
-    low_right_rate: 0.65,
-    top_right_rate: 1.0,
-    min_question_time: 5.0,
+    low_right_rate: 0.7,
+    top_right_rate: 0.9,
+    min_question_time: 8.0,
     current_question_num: 0,
     current_right_num: 0,
     finish: false
@@ -206,6 +206,8 @@ function App() {
   const [activeLogId, setActiveLogId] = useState(null);
   const [activeLogContent, setActiveLogContent] = useState('');
   const logEndRef = useRef(null);
+  const [logStats, setLogStats] = useState({ system_log_size: '0 B', task_logs_size: '0 B', task_logs_count: 0 });
+  const [openClearLogsConfirm, setOpenClearLogsConfirm] = useState(false);
   
   // Notification state
   const [toast, setToast] = useState({ open: false, message: '', severity: 'success' });
@@ -218,10 +220,14 @@ function App() {
         const data = await res.json();
         setUsers(data);
         
-        // Refresh selected user reference if active
+        // Auto update selectedUser reference if it matches
         if (selectedUser) {
           const updated = data.find(u => u.username === selectedUser.username);
-          if (updated) setSelectedUser(updated);
+          if (updated) {
+            setSelectedUser(updated);
+          } else {
+            setSelectedUser(null);
+          }
         }
       }
     } catch (e) {
@@ -277,6 +283,35 @@ function App() {
     }
   };
 
+  const fetchLogStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/logs/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        setLogStats(data);
+      }
+    } catch (e) {
+      console.error("Fetch log stats error", e);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/logs/clear`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        handleShowToast(data.message || "历史日志清理完成！");
+        fetchLogStats();
+      } else {
+        handleShowToast("清理日志失败", "error");
+      }
+    } catch (e) {
+      handleShowToast("网络请求异常", "error");
+    } finally {
+      setOpenClearLogsConfirm(false);
+    }
+  };
+
   // Initial loads
   useEffect(() => {
     fetchUsers();
@@ -290,7 +325,7 @@ function App() {
     const timer = setInterval(() => {
       fetchQueue();
       fetchUsers();
-    }, 2000);
+    }, 1000);
     return () => clearInterval(timer);
   }, [selectedUser]);
 
@@ -449,9 +484,9 @@ function App() {
     setTaskForm({
       course_name: '',
       aim_questions_num_total: 100,
-      low_right_rate: 0.65,
-      top_right_rate: 1.0,
-      min_question_time: 5.0,
+      low_right_rate: 0.7,
+      top_right_rate: 0.9,
+      min_question_time: 8.0,
       current_question_num: 0,
       current_right_num: 0,
       finish: false
@@ -577,6 +612,10 @@ function App() {
   };
 
   const handleToggleBrowserVisibility = async (taskId, show) => {
+    if (show) {
+      const ok = window.confirm("【警告提示】\n\n显示浏览器窗口后，请千万不要手动点击浏览器右上角的 “X” (关闭) 按钮！\n\n手动关闭浏览器窗口将直接导致答题任务中断崩溃。如果您需要隐藏浏览器，请再次点击列表中的眼睛图标即可。\n\n确定要显示浏览器窗口吗？");
+      if (!ok) return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/queue/${taskId}/browser`, {
         method: 'POST',
@@ -913,15 +952,41 @@ function App() {
                         const accuracy = task.current_question_num > 0
                           ? ((task.current_right_num / task.current_question_num) * 100).toFixed(1)
                           : 0;
+                        const actualRate = task.current_question_num > 0
+                          ? task.current_right_num / task.current_question_num
+                          : 0;
+                        const isBelowRate = !task.finish && 
+                          task.current_question_num > 0 && 
+                          task.low_right_rate < 1 && 
+                          actualRate < task.low_right_rate;
+                        const qItem = queue.items.find(item => item.username === selectedUser.username && item.course_name === task.course_name);
+                        const isTaskRunning = qItem?.status === 'running';
 
                         return (
                           <Box key={task.course_name}>
                             <Card variant="outlined" sx={{ 
-                              background: task.finish ? 'rgba(16, 185, 129, 0.05)' : '#1e293b',
+                              background: task.finish 
+                                ? 'rgba(16, 185, 129, 0.05)' 
+                                : isBelowRate
+                                  ? 'rgba(244, 63, 94, 0.03)'
+                                  : task.low_right_rate === 1 
+                                    ? 'rgba(245, 158, 11, 0.03)' 
+                                    : '#1e293b',
+                              borderColor: task.finish 
+                                ? '#334155' 
+                                : isBelowRate
+                                  ? 'error.main'
+                                  : task.low_right_rate === 1 
+                                    ? 'warning.main' 
+                                    : '#334155',
                               transition: 'all 0.2s',
                               '&:hover': {
                                 transform: 'translateY(-2px)',
-                                borderColor: 'primary.main'
+                                borderColor: isBelowRate
+                                  ? 'error.main'
+                                  : task.low_right_rate === 1 
+                                    ? 'warning.main' 
+                                    : 'primary.main'
                               }
                             }}>
                               <CardContent sx={{ pb: 1 }}>
@@ -930,6 +995,12 @@ function App() {
                                     {task.course_name}
                                   </Typography>
                                   <Box display="flex" gap={1}>
+                                    {isBelowRate && (
+                                      <Chip size="small" label="正确率偏低" color="error" />
+                                    )}
+                                    {task.low_right_rate === 1 && !task.finish && (
+                                      <Chip size="small" label="仅题库作答" color="warning" />
+                                    )}
                                     {task.finish ? (
                                       <Chip size="small" label="已完成" color="success" />
                                     ) : (
@@ -963,40 +1034,79 @@ function App() {
                                     <Typography variant="body2">{task.current_right_num} 题</Typography>
                                   </Box>
                                   <Box sx={{ gridColumn: 'span 4' }}>
-                                    <Typography variant="caption" color="text.secondary">当前正确率</Typography>
-                                    <Typography variant="body2" color="secondary.main">{accuracy}%</Typography>
+                                    <Typography variant="caption" color={isBelowRate ? "error.main" : "text.secondary"}>
+                                      当前正确率
+                                    </Typography>
+                                    <Typography 
+                                      variant="body2" 
+                                      color={isBelowRate ? "error.main" : "secondary.main"}
+                                      fontWeight={isBelowRate ? "bold" : "normal"}
+                                    >
+                                      {accuracy}% {isBelowRate && " (偏低)"}
+                                    </Typography>
                                   </Box>
                                   <Box sx={{ gridColumn: 'span 4' }}>
                                     <Typography variant="caption" color="text.secondary">最高/低正确率限制</Typography>
-                                    <Typography variant="body2">{task.low_right_rate} ~ {task.top_right_rate}</Typography>
+                                    {task.low_right_rate === 1 ? (
+                                      <Typography variant="body2" color="warning.main" fontWeight="bold">
+                                        仅题库作答模式 (1.0)
+                                      </Typography>
+                                    ) : (
+                                      <Typography variant="body2">
+                                        {task.low_right_rate} ~ {task.top_right_rate}
+                                      </Typography>
+                                    )}
                                   </Box>
                                 </Box>
                               </CardContent>
 
                               {/* Task card controls */}
                               <CardActions sx={{ justifyContent: 'flex-end', px: 2, pb: 2, borderTop: '1px solid #334155', gap: 1 }}>
-                                <IconButton 
-                                  size="small" 
-                                  color="inherit" 
-                                  onClick={() => handleOpenEditTask(task)}
-                                >
-                                  <EditIcon size="small" />
-                                </IconButton>
-                                <IconButton 
-                                  size="small" 
-                                  color="error" 
-                                  onClick={() => handleDeleteTask(task.course_name)}
-                                >
-                                  <DeleteIcon size="small" />
-                                </IconButton>
-                                <Button
-                                  variant="contained"
-                                  size="small"
-                                  startIcon={<PlayIcon />}
-                                  onClick={() => handleAddTaskToQueue(selectedUser.username, task.course_name)}
-                                >
-                                  加入任务队列
-                                </Button>
+                                <Tooltip title={isTaskRunning ? "任务正在运行，禁止编辑" : "编辑任务"}>
+                                  <span>
+                                    <IconButton 
+                                      size="small" 
+                                      color="inherit" 
+                                      onClick={() => handleOpenEditTask(task)}
+                                      disabled={isTaskRunning}
+                                    >
+                                      <EditIcon size="small" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                                <Tooltip title={isTaskRunning ? "任务正在运行，禁止删除" : "删除任务"}>
+                                  <span>
+                                    <IconButton 
+                                      size="small" 
+                                      color="error" 
+                                      onClick={() => handleDeleteTask(task.course_name)}
+                                      disabled={isTaskRunning}
+                                    >
+                                      <DeleteIcon size="small" />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                                {qItem ? (
+                                  <Button
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
+                                    startIcon={<DeleteIcon />}
+                                    onClick={() => handleRemoveFromQueue(qItem.id)}
+                                    disabled={isTaskRunning}
+                                  >
+                                    从队列中移除
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="contained"
+                                    size="small"
+                                    startIcon={<PlayIcon />}
+                                    onClick={() => handleAddTaskToQueue(selectedUser.username, task.course_name)}
+                                  >
+                                    加入任务队列
+                                  </Button>
+                                )}
                               </CardActions>
                             </Card>
                           </Box>
@@ -1045,29 +1155,47 @@ function App() {
 
                   {/* Queue items list */}
                   <List sx={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 400, overflowY: 'auto' }}>
-                    {queue.items.map((item) => (
-                      <Paper 
-                        key={item.id} 
-                        variant="outlined" 
-                        sx={{ 
-                          p: 1.5, 
-                          background: item.status === 'running' ? 'rgba(20, 184, 166, 0.05)' : '#0f172a',
-                          borderColor: item.status === 'running' ? 'secondary.main' : '#334155'
-                        }}
-                      >
-                        <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
-                          <Box>
-                            <Typography variant="subtitle2" fontWeight="bold">
-                              {item.course_name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              用户: {item.username}
-                            </Typography>
+                    {queue.items.map((item) => {
+                      const qActualRate = item.current_question_num > 0
+                        ? item.current_right_num / item.current_question_num
+                        : 0;
+                      const isQBelowRate = !item.finish && 
+                        item.current_question_num > 0 && 
+                        item.low_right_rate < 1 && 
+                        qActualRate < item.low_right_rate;
+
+                      return (
+                        <Paper 
+                          key={item.id} 
+                          variant="outlined" 
+                          sx={{ 
+                            p: 1.5, 
+                            background: item.status === 'running' 
+                              ? (isQBelowRate ? 'rgba(244, 63, 94, 0.08)' : 'rgba(20, 184, 166, 0.05)') 
+                              : (isQBelowRate ? 'rgba(244, 63, 94, 0.03)' : '#0f172a'),
+                            borderColor: isQBelowRate 
+                              ? 'error.main' 
+                              : item.status === 'running' 
+                                ? 'secondary.main' 
+                                : '#334155'
+                          }}
+                        >
+                          <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={1}>
+                            <Box>
+                              <Typography variant="subtitle2" fontWeight="bold">
+                                {item.course_name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                用户: {item.username}
+                              </Typography>
+                            </Box>
+                            <Box display="flex" flexDirection="column" alignItems="flex-end" gap={0.5}>
+                              {renderQueueStatus(item.status)}
+                              {isQBelowRate && (
+                                <Chip size="small" label="正确率偏低" color="error" sx={{ height: 18, fontSize: '0.7rem' }} />
+                              )}
+                            </Box>
                           </Box>
-                          <Box display="flex" flexDirection="column" alignItems="flex-end" gap={0.5}>
-                            {renderQueueStatus(item.status)}
-                          </Box>
-                        </Box>
 
                         {/* Queue Task Logs */}
                         <Box display="flex" justifyContent="space-between" alignItems="center" mt={1}>
@@ -1120,44 +1248,76 @@ function App() {
                             sx={{ 
                               mt: 2, 
                               p: 2, 
-                              backgroundColor: 'rgba(245, 158, 11, 0.08)', 
+                              backgroundColor: 'rgba(245, 158, 11, 0.05)', 
                               borderColor: 'warning.main',
-                              borderWidth: '1px'
+                              borderWidth: '1px',
+                              borderRadius: 2
                             }}
                           >
-                            <Typography variant="subtitle2" color="warning.main" fontWeight="bold" gutterBottom>
-                              ⚠ 需人工作答 (剩 {item.manual_question.remaining_time} 秒)
+                            <Typography variant="subtitle2" color="warning.main" fontWeight="bold" gutterBottom sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>⚠ 需人工作答</span>
+                              <Chip size="small" color="warning" label={`剩 ${item.manual_question.remaining_time} 秒`} variant="outlined" sx={{ height: 20, fontSize: '0.75rem' }} />
                             </Typography>
-                            <Typography variant="body2" sx={{ mb: 1.5, fontSize: '0.875rem' }}>
+                            <Typography variant="body2" sx={{ mb: 2, fontSize: '0.875rem', fontWeight: 500, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                               [{item.manual_question.type}] {item.manual_question.title}
                             </Typography>
                             
-                            <Box display="flex" flexDirection="column" gap={0.5} mb={2}>
+                            <Box display="flex" flexDirection="column" gap={1} mb={2}>
                               {item.manual_question.options.map((opt) => {
                                 const isSelected = selectedAnswers[item.id]?.includes(opt) || false;
+                                const isMult = item.manual_question.type.includes("多选");
+                                
                                 return (
-                                  <FormControlLabel
+                                  <Box
                                     key={opt}
-                                    control={
-                                      <Switch 
-                                        size="small"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          const checked = e.target.checked;
-                                          setSelectedAnswers(prev => {
-                                            const current = prev[item.id] || [];
-                                            if (checked) {
-                                              return { ...prev, [item.id]: [...current, opt] };
-                                            } else {
-                                              return { ...prev, [item.id]: current.filter(x => x !== opt) };
-                                            }
-                                          });
-                                        }}
-                                      />
-                                    }
-                                    label={<Typography variant="caption" sx={{ color: 'text.primary' }}>{opt}</Typography>}
-                                    sx={{ m: 0 }}
-                                  />
+                                    onClick={() => {
+                                      setSelectedAnswers(prev => {
+                                        const current = prev[item.id] || [];
+                                        if (isMult) {
+                                          if (current.includes(opt)) {
+                                            return { ...prev, [item.id]: current.filter(x => x !== opt) };
+                                          } else {
+                                            return { ...prev, [item.id]: [...current, opt] };
+                                          }
+                                        } else {
+                                          return { ...prev, [item.id]: [opt] };
+                                        }
+                                      });
+                                    }}
+                                    sx={{
+                                      p: 1.25,
+                                      borderRadius: 1.5,
+                                      border: '1px solid',
+                                      borderColor: isSelected ? 'warning.main' : '#334155',
+                                      backgroundColor: isSelected ? 'rgba(245, 158, 11, 0.15)' : 'rgba(30, 41, 59, 0.4)',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      userSelect: 'none',
+                                      '&:hover': {
+                                        borderColor: 'warning.main',
+                                        backgroundColor: isSelected ? 'rgba(245, 158, 11, 0.2)' : 'rgba(245, 158, 11, 0.05)',
+                                      }
+                                    }}
+                                  >
+                                    <Typography variant="caption" sx={{ color: isSelected ? 'warning.main' : 'text.primary', pr: 2, flexGrow: 1 }}>
+                                      {opt}
+                                    </Typography>
+                                    <Box
+                                      sx={{
+                                        width: 14,
+                                        height: 14,
+                                        borderRadius: isMult ? '3px' : '50%',
+                                        border: '1.5px solid',
+                                        borderColor: isSelected ? 'warning.main' : '#64748b',
+                                        backgroundColor: isSelected ? 'warning.main' : 'transparent',
+                                        transition: 'all 0.15s ease',
+                                        flexShrink: 0
+                                      }}
+                                    />
+                                  </Box>
                                 );
                               })}
                             </Box>
@@ -1180,7 +1340,7 @@ function App() {
                           </Typography>
                         )}
                       </Paper>
-                    ))}
+                    )})}
 
                     {queue.items.length === 0 && (
                       <Box p={4} textAlign="center">
@@ -1197,153 +1357,217 @@ function App() {
           ) : (
             
             // Settings Tab View
-            <Paper sx={{ p: 4, maxWidth: 800, mx: 'auto' }}>
-              <Typography variant="h6" mb={4}>
-                通用参数配置 (config.toml)
-              </Typography>
-              
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3 }}>
-                <Box sx={{ gridColumn: 'span 12' }}>
-                  <Typography variant="subtitle2" color="primary" mb={1}>AI API 配置</Typography>
-                </Box>
+            <Box sx={{ maxWidth: 800, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <Paper sx={{ p: 4 }}>
+                <Typography variant="h6" mb={4}>
+                  通用参数配置 (config.toml)
+                </Typography>
                 
-                <Box sx={{ gridColumn: 'span 12' }}>
-                  <TextField
-                    fullWidth
-                    label="API Key (密钥)"
-                    value={config.api_key}
-                    type="password"
-                    onChange={(e) => setConfig({ ...config, api_key: e.target.value })}
-                  />
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3 }}>
+                  <Box sx={{ gridColumn: 'span 12' }}>
+                    <Typography variant="subtitle2" color="primary" mb={1}>AI API 配置</Typography>
+                  </Box>
+                  
+                  <Box sx={{ gridColumn: 'span 12' }}>
+                    <TextField
+                      fullWidth
+                      label="API Key (密钥)"
+                      value={config.api_key}
+                      type="password"
+                      onChange={(e) => setConfig({ ...config, api_key: e.target.value })}
+                    />
+                  </Box>
+
+                  <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
+                    <TextField
+                      fullWidth
+                      label="Base URL (接口基础地址)"
+                      value={config.base_url}
+                      onChange={(e) => setConfig({ ...config, base_url: e.target.value })}
+                    />
+                  </Box>
+
+                  <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
+                    <TextField
+                      fullWidth
+                      label="Model Name (使用的模型)"
+                      value={config.model}
+                      onChange={(e) => setConfig({ ...config, model: e.target.value })}
+                    />
+                  </Box>
+
+                  <Box sx={{ gridColumn: 'span 12' }}>
+                    <Divider sx={{ borderColor: '#334155', my: 2 }} />
+                    <Typography variant="subtitle2" color="primary" mb={1}>系统并行并发限制</Typography>
+                  </Box>
+
+                  <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
+                    <TextField
+                      fullWidth
+                      label="全局任务最大并行数 (task_parallel_limit)"
+                      type="number"
+                      value={config.task_parallel_limit}
+                      onChange={(e) => setConfig({ ...config, task_parallel_limit: parseInt(e.target.value) || 1 })}
+                      helperText="限制系统同时运行的总任务线程数 (并发数)"
+                    />
+                  </Box>
+
+                  <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
+                    <TextField
+                      fullWidth
+                      label="单用户最大并行数 (user_parallel_limit)"
+                      type="number"
+                      value={config.user_parallel_limit}
+                      onChange={(e) => setConfig({ ...config, user_parallel_limit: parseInt(e.target.value) || 1 })}
+                      helperText="限制同一个用户下同时运行的课程数，多余的会排队等待"
+                    />
+                  </Box>
+
+                  <Box sx={{ gridColumn: 'span 12' }}>
+                    <Divider sx={{ borderColor: '#334155', my: 2 }} />
+                    <Typography variant="subtitle2" color="primary" mb={1}>自动答题优先机制设置 (上下移动调整优先级)</Typography>
+                  </Box>
+
+                  <Box sx={{ gridColumn: 'span 12' }}>
+                    <Paper variant="outlined" sx={{ p: 2, background: '#0f172a', borderColor: '#334155' }}>
+                      <List sx={{ p: 0 }}>
+                        {(config.answer_priority || ['db', 'ai', 'manual', 'random']).map((strategy, index) => (
+                          <ListItem
+                            key={strategy}
+                            divider={index < (config.answer_priority || []).length - 1}
+                            sx={{ py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                          >
+                            <Box display="flex" alignItems="center" gap={2}>
+                              <Chip label={index + 1} size="small" color="primary" sx={{ fontWeight: 'bold' }} />
+                              <ListItemText 
+                                primary={STRATEGY_NAMES[strategy] || strategy}
+                                primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
+                              />
+                            </Box>
+                            <Box display="flex" gap={0.5}>
+                              <IconButton
+                                size="small"
+                                disabled={index === 0}
+                                onClick={() => {
+                                  const newPriority = [...config.answer_priority];
+                                  const temp = newPriority[index];
+                                  newPriority[index] = newPriority[index - 1];
+                                  newPriority[index - 1] = temp;
+                                  setConfig({ ...config, answer_priority: newPriority });
+                                }}
+                              >
+                                <ArrowUpwardIcon fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                disabled={index === (config.answer_priority || []).length - 1}
+                                onClick={() => {
+                                  const newPriority = [...config.answer_priority];
+                                  const temp = newPriority[index];
+                                  newPriority[index] = newPriority[index + 1];
+                                  newPriority[index + 1] = temp;
+                                  setConfig({ ...config, answer_priority: newPriority });
+                                }}
+                              >
+                                <ArrowDownwardIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Paper>
+                  </Box>
+
+                  <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
+                    <TextField
+                      fullWidth
+                      label="人工作答等待超时时间 (秒)"
+                      type="number"
+                      value={config.manual_timeout || 30}
+                      onChange={(e) => setConfig({ ...config, manual_timeout: parseInt(e.target.value) || 0 })}
+                      helperText="在人工作答模式下，如果在规定秒数内未在控制台输入答案，将自动跳过并执行后面的策略"
+                    />
+                  </Box>
+
+                  <Box sx={{ gridColumn: 'span 12', display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+                    <Button
+                      variant="contained"
+                      size="large"
+                      startIcon={<PowerIcon />}
+                      onClick={handleSaveConfig}
+                    >
+                      保存配置
+                    </Button>
+                  </Box>
+                </Box>
+              </Paper>
+
+              <Paper sx={{ p: 4 }}>
+                <Typography variant="h6" mb={2} color="primary" sx={{ fontWeight: 600 }}>
+                  系统日志与空间管理
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={3}>
+                  系统运行时会产生日志文件，主要包括系统运行日志与各任务的具体执行日志。系统默认会自动轮转保留最近 7 天的日志，并会在启动时自动清理 7 天前未修改的历史日志。你也可以在此手动清理。
+                </Typography>
+                
+                <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 3, mb: 3 }}>
+                  <Box sx={{ gridColumn: { xs: 'span 12', sm: 'span 4' } }}>
+                    <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', background: '#0f172a', borderColor: '#334155' }}>
+                      <Typography variant="caption" color="text.secondary" display="block">系统核心日志大小</Typography>
+                      <Typography variant="h6" color="text.primary" sx={{ mt: 1, fontWeight: 'bold' }}>{logStats.system_log_size || '0 B'}</Typography>
+                    </Paper>
+                  </Box>
+                  <Box sx={{ gridColumn: { xs: 'span 12', sm: 'span 4' } }}>
+                    <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', background: '#0f172a', borderColor: '#334155' }}>
+                      <Typography variant="caption" color="text.secondary" display="block">任务过程日志大小</Typography>
+                      <Typography variant="h6" color="text.primary" sx={{ mt: 1, fontWeight: 'bold' }}>{logStats.task_logs_size || '0 B'}</Typography>
+                    </Paper>
+                  </Box>
+                  <Box sx={{ gridColumn: { xs: 'span 12', sm: 'span 4' } }}>
+                    <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', background: '#0f172a', borderColor: '#334155' }}>
+                      <Typography variant="caption" color="text.secondary" display="block">任务日志文件个数</Typography>
+                      <Typography variant="h6" color="text.primary" sx={{ mt: 1, fontWeight: 'bold' }}>{logStats.task_logs_count || 0} 个</Typography>
+                    </Paper>
+                  </Box>
                 </Box>
 
-                <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
-                  <TextField
-                    fullWidth
-                    label="Base URL (接口基础地址)"
-                    value={config.base_url}
-                    onChange={(e) => setConfig({ ...config, base_url: e.target.value })}
-                  />
-                </Box>
-
-                <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
-                  <TextField
-                    fullWidth
-                    label="Model Name (使用的模型)"
-                    value={config.model}
-                    onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                  />
-                </Box>
-
-                <Box sx={{ gridColumn: 'span 12' }}>
-                  <Divider sx={{ borderColor: '#334155', my: 2 }} />
-                  <Typography variant="subtitle2" color="primary" mb={1}>系统并行并发限制</Typography>
-                </Box>
-
-                <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
-                  <TextField
-                    fullWidth
-                    label="全局任务最大并行数 (task_parallel_limit)"
-                    type="number"
-                    value={config.task_parallel_limit}
-                    onChange={(e) => setConfig({ ...config, task_parallel_limit: parseInt(e.target.value) || 1 })}
-                    helperText="限制系统同时运行的总任务线程数 (并发数)"
-                  />
-                </Box>
-
-                <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
-                  <TextField
-                    fullWidth
-                    label="单用户最大并行数 (user_parallel_limit)"
-                    type="number"
-                    value={config.user_parallel_limit}
-                    onChange={(e) => setConfig({ ...config, user_parallel_limit: parseInt(e.target.value) || 1 })}
-                    helperText="限制同一个用户下同时运行的课程数，多余的会排队等待"
-                  />
-                </Box>
-
-                <Box sx={{ gridColumn: 'span 12' }}>
-                  <Divider sx={{ borderColor: '#334155', my: 2 }} />
-                  <Typography variant="subtitle2" color="primary" mb={1}>自动答题优先机制设置 (上下移动调整优先级)</Typography>
-                </Box>
-
-                <Box sx={{ gridColumn: 'span 12' }}>
-                  <Paper variant="outlined" sx={{ p: 2, background: '#0f172a', borderColor: '#334155' }}>
-                    <List sx={{ p: 0 }}>
-                      {(config.answer_priority || ['db', 'ai', 'manual', 'random']).map((strategy, index) => (
-                        <ListItem
-                          key={strategy}
-                          divider={index < (config.answer_priority || []).length - 1}
-                          sx={{ py: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                        >
-                          <Box display="flex" alignItems="center" gap={2}>
-                            <Chip label={index + 1} size="small" color="primary" sx={{ fontWeight: 'bold' }} />
-                            <ListItemText 
-                              primary={STRATEGY_NAMES[strategy] || strategy}
-                              primaryTypographyProps={{ variant: 'body2', fontWeight: 500 }}
-                            />
-                          </Box>
-                          <Box display="flex" gap={0.5}>
-                            <IconButton
-                              size="small"
-                              disabled={index === 0}
-                              onClick={() => {
-                                const newPriority = [...config.answer_priority];
-                                const temp = newPriority[index];
-                                newPriority[index] = newPriority[index - 1];
-                                newPriority[index - 1] = temp;
-                                setConfig({ ...config, answer_priority: newPriority });
-                              }}
-                            >
-                              <ArrowUpwardIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              disabled={index === (config.answer_priority || []).length - 1}
-                              onClick={() => {
-                                const newPriority = [...config.answer_priority];
-                                const temp = newPriority[index];
-                                newPriority[index] = newPriority[index + 1];
-                                newPriority[index + 1] = temp;
-                                setConfig({ ...config, answer_priority: newPriority });
-                              }}
-                            >
-                              <ArrowDownwardIcon fontSize="small" />
-                            </IconButton>
-                          </Box>
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Paper>
-                </Box>
-
-                <Box sx={{ gridColumn: { xs: 'span 12', md: 'span 6' } }}>
-                  <TextField
-                    fullWidth
-                    label="人工作答等待超时时间 (秒)"
-                    type="number"
-                    value={config.manual_timeout || 30}
-                    onChange={(e) => setConfig({ ...config, manual_timeout: parseInt(e.target.value) || 0 })}
-                    helperText="在人工作答模式下，如果在规定秒数内未在控制台输入答案，将自动跳过并执行后面的策略"
-                  />
-                </Box>
-
-                <Box sx={{ gridColumn: 'span 12', display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<RefreshIcon />}
+                    onClick={fetchLogStats}
+                  >
+                    刷新统计
+                  </Button>
                   <Button
                     variant="contained"
-                    size="large"
-                    startIcon={<PowerIcon />}
-                    onClick={handleSaveConfig}
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => setOpenClearLogsConfirm(true)}
                   >
-                    保存配置
+                    立即清理历史日志
                   </Button>
                 </Box>
-              </Box>
-            </Paper>
+              </Paper>
+            </Box>
           )}
         </Box>
 
         {/* ---------------- Dialogs ---------------- */}
+        
+        {/* Clear Logs Confirmation Dialog */}
+        <Dialog open={openClearLogsConfirm} onClose={() => setOpenClearLogsConfirm(false)}>
+          <DialogTitle>确认清理系统日志</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              确定要清理所有历史日志吗？这将清除所有非运行中任务的日志文件和系统日志备份文件，并重置当前的 app.log 文件。此操作不可撤销。
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2.5 }}>
+            <Button onClick={() => setOpenClearLogsConfirm(false)}>取消</Button>
+            <Button onClick={handleClearLogs} variant="contained" color="error">确认清理</Button>
+          </DialogActions>
+        </Dialog>
         
         {/* Create User Dialog */}
         <Dialog open={openCreateUser} onClose={() => setOpenCreateUser(false)}>
@@ -1486,24 +1710,24 @@ function App() {
               onChange={(e) => setTaskForm({ ...taskForm, aim_questions_num_total: parseInt(e.target.value) || 0 })}
             />
             
-            <Box display="flex" gap={2}>
-              <TextField
-                label="最低做对率"
-                type="number"
-                inputProps={{ step: 0.05 }}
-                value={taskForm.low_right_rate}
-                onChange={(e) => setTaskForm({ ...taskForm, low_right_rate: parseFloat(e.target.value) || 0 })}
-                helperText="低于此比率会刷新"
-              />
-              <TextField
-                label="控制最高做对率"
-                type="number"
-                inputProps={{ step: 0.05 }}
-                value={taskForm.top_right_rate}
-                onChange={(e) => setTaskForm({ ...taskForm, top_right_rate: parseFloat(e.target.value) || 0 })}
-                helperText="高于此比率会故意做错"
-              />
-            </Box>
+            <TextField
+              label="最低正确率"
+              type="number"
+              fullWidth
+              inputProps={{ step: 0.05 }}
+              value={taskForm.low_right_rate}
+              onChange={(e) => setTaskForm({ ...taskForm, low_right_rate: parseFloat(e.target.value) || 0 })}
+              helperText={taskForm.low_right_rate === 1 ? "【已开启仅题库作答】未录入将自动刷新" : "设置正确率下限。设为 1 开启仅题库"}
+            />
+            <TextField
+              label="最高正确率"
+              type="number"
+              fullWidth
+              inputProps={{ step: 0.05 }}
+              value={taskForm.top_right_rate}
+              onChange={(e) => setTaskForm({ ...taskForm, top_right_rate: parseFloat(e.target.value) || 0 })}
+              helperText="高于此比率会故意做错"
+            />
 
             <TextField
               label="每题最少用时 (秒)"
@@ -1532,7 +1756,21 @@ function App() {
               control={
                 <Switch
                   checked={taskForm.finish}
-                  onChange={(e) => setTaskForm({ ...taskForm, finish: e.target.checked })}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    if (!checked && taskForm.finish) {
+                      if (window.confirm("确定要取消标记已完成吗？这将会同时清除该任务的所有做题进度！")) {
+                        setTaskForm({
+                          ...taskForm,
+                          finish: false,
+                          current_question_num: 0,
+                          current_right_num: 0
+                        });
+                      }
+                    } else {
+                      setTaskForm({ ...taskForm, finish: checked });
+                    }
+                  }}
                 />
               }
               label="标记任务已完成"

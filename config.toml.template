@@ -1,0 +1,12 @@
+[ai]
+api_key = "在此填入你的API密钥"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+model = "gemini-3.1-flash-lite"
+
+[system]
+task_parallel_limit = 1
+user_parallel_limit = 1
+
+[answer]
+answer_priority = ["db", "ai", "manual", "random"]
+manual_timeout = 20

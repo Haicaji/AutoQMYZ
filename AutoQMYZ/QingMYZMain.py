@@ -1,5 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
+import sys
 import time
 import json
 import random
@@ -150,9 +151,9 @@ class QingMYZClass():
             # 从配置中解析当前课程的各项参数
             aim_questions_num_total = int(task['aim_questions_num_total'])
 
-            low_right_rate = float(task.get('low_right_rate', 0.65))
-            top_right_rate = float(task.get('top_right_rate', 1.00))
-            min_question_time = float(task.get('min_question_time', 5.0))
+            low_right_rate = float(task.get('low_right_rate', 0.7))
+            top_right_rate = float(task.get('top_right_rate', 0.9))
+            min_question_time = float(task.get('min_question_time', 8.0))
 
             current_question_num = int(task.get('current_question_num', 0))
             current_right_num = int(task.get('current_right_num', 0))
@@ -210,14 +211,14 @@ class QingMYZClass():
                                         answer = [random.choice(question[2])]
                                         print(f"\n正确率过高警告, 随机选择答案{answer}\n")
                                     else:
-                                        answer = get_answer_by_all(question, task['course_name'])
+                                        answer = get_answer_by_all(question, task['course_name'], driver)
                                 else:
                                     print("\n正确率过低警告!!!!!!!!!!!!!!!!!!\n")
                                     # 查找答案
-                                    answer = get_answer_by_all(question, task['course_name'])
+                                    answer = get_answer_by_all(question, task['course_name'], driver)
                             else:
                                 # 查找答案
-                                answer = get_answer_by_all(question, task['course_name'])
+                                answer = get_answer_by_all(question, task['course_name'], driver)
 
                         # 点击答案
                         right_answer, answer_sucess = click_answer(driver, answer, question[0], question)
@@ -310,10 +311,13 @@ class QingMYZClass():
 
     # 创建浏览器控制驱动
     def __createDriver(self, UA):
-        # 当前所在绝对路径
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # 返回上一级目录(AutoQMYZ/ -> 项目根目录)
-        current_dir = os.path.dirname(current_dir)
+        # 当前所在绝对路径 — 兼容 PyInstaller 打包模式
+        if getattr(sys, 'frozen', False):
+            current_dir = os.path.dirname(sys.executable)
+        else:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # 返回上一级目录(AutoQMYZ/ -> 项目根目录)
+            current_dir = os.path.dirname(current_dir)
 
         # 配置浏览器选项
         options = webdriver.ChromeOptions()
@@ -373,7 +377,6 @@ class QingMYZClass():
             if hwnd[0] != 0:
                 self.hwnd = hwnd[0]
                 print(f"[Driver] Found window HWND: {self.hwnd}")
-                self.disable_close_button()
                 if not getattr(self, 'show_browser_gui', False):
                     self.hide_browser()
             else:
@@ -382,22 +385,6 @@ class QingMYZClass():
             print(f"[Driver] Error setting window title or finding HWND: {e}")
 
         return driver, ua
-
-    def disable_close_button(self):
-        hwnd = getattr(self, 'hwnd', None)
-        if hwnd:
-            try:
-                import ctypes
-                SC_CLOSE = 0xF060
-                MF_BYCOMMAND = 0x00000000
-                MF_GRAYED = 0x00000001
-                
-                hMenu = ctypes.windll.user32.GetSystemMenu(hwnd, False)
-                if hMenu:
-                    ctypes.windll.user32.EnableMenuItem(hMenu, SC_CLOSE, MF_BYCOMMAND | MF_GRAYED)
-                    print(f"[Driver] Disabled close button for window {hwnd}")
-            except Exception as e:
-                print(f"[Driver] Failed to disable close button: {e}")
 
     def hide_browser(self):
         hwnd = getattr(self, 'hwnd', None)

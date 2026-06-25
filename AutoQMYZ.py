@@ -12,8 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import toml
 
-# Resolve path references
-project_root = os.path.dirname(os.path.abspath(__file__))
+# Resolve path references — support both normal Python and PyInstaller frozen exe
+if getattr(sys, 'frozen', False):
+    # Running as compiled exe: use the directory containing the exe
+    project_root = os.path.dirname(sys.executable)
+else:
+    project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(project_root)
 
 # Set up logging and add custom handler for streaming individual task logs
@@ -98,17 +102,36 @@ CONFIG_FILE = os.path.join(project_root, "config.toml")
 
 def load_toml_config():
     if not os.path.exists(CONFIG_FILE):
-        return {
-            "ai": {"api_key": "", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
-            "system": {"task_parallel_limit": 1, "user_parallel_limit": 1},
-            "answer": {"answer_priority": ["db", "ai", "manual", "random"], "manual_timeout": 30}
+        default_config = {
+            "ai": {
+                "api_key": "", 
+                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", 
+                "model": "gemini-3.1-flash-lite"
+            },
+            "system": {
+                "task_parallel_limit": 1, 
+                "user_parallel_limit": 1
+            },
+            "answer": {
+                "answer_priority": ["db", "ai", "manual", "random"], 
+                "manual_timeout": 20
+            }
         }
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                toml.dump(default_config, f)
+        except Exception:
+            pass
+        return default_config
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return toml.load(f)
 
 def save_toml_config(config_dict):
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         toml.dump(config_dict, f)
+
+# 启动时确保配置文件存在
+load_toml_config()
 
 @app.get("/api/config")
 def get_config():
@@ -238,6 +261,15 @@ def delete_user(username: str):
         raise HTTPException(status_code=404, detail="用户不存在")
     try:
         os.remove(user_file)
+        
+        # 删除该用户的任务日志文件
+        if os.path.exists(task_logs_dir):
+            for filename in os.listdir(task_logs_dir):
+                if filename.startswith(f"{username}_") and filename.endswith(".log"):
+                    try:
+                        os.remove(os.path.join(task_logs_dir, filename))
+                    except Exception:
+                        pass
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"删除用户失败: {e}")
     return {"message": "用户删除成功"}
@@ -428,11 +460,64 @@ def update_user_tasks(username: str, tasks: list[TaskItemSchema]):
     with open(user_file, "r", encoding="utf-8-sig") as f:
         user_data = json.load(f)
     
-    user_data["tasks"] = [t.model_dump() for t in tasks]
+    old_tasks = user_data.get("tasks", [])
+    old_task_names = {t["course_name"] for t in old_tasks}
+    
+    new_tasks = [t.model_dump() for t in tasks]
+    new_task_names = {t["course_name"] for t in new_tasks}
+    
+    # 1. Handle deleted tasks: if a task was in old_tasks but not in new_tasks, remove it from queue
+    deleted_task_names = old_task_names - new_task_names
+    
+    # Clean up logs for deleted tasks
+    for deleted_name in deleted_task_names:
+        task_id = f"{username}_{deleted_name}"
+        log_file = os.path.join(task_logs_dir, f"{task_id}.log")
+        if os.path.exists(log_file):
+            try:
+                os.remove(log_file)
+            except Exception:
+                pass
+                
+    global queue_items
+    with queue_lock:
+        queue_modified = False
+        
+        # Remove deleted tasks from queue if they are not running
+        new_queue_items = []
+        for item in queue_items:
+            if item["username"] == username and item["course_name"] in deleted_task_names:
+                if item["status"] != "running":
+                    queue_modified = True
+                    continue
+            new_queue_items.append(item)
+        queue_items = new_queue_items
+        
+        # 2. Handle modified tasks: if a task is already in the queue, reset completion and queue status to pending
+        for new_t in new_tasks:
+            task_id = f"{username}_{new_t['course_name']}"
+            for item in queue_items:
+                if item["id"] == task_id:
+                    if item["status"] != "running":
+                        # Reset completion status and queue item status
+                        new_t["finish"] = False
+                        item["status"] = "pending"
+                        item["error"] = ""
+                        item["started_at"] = ""
+                        item["finished_at"] = ""
+                        queue_modified = True
+                    break
+                    
+        if queue_modified:
+            save_queue_to_disk()
+            
+    user_data["tasks"] = new_tasks
     
     with open(user_file, "w", encoding="utf-8") as f:
         json.dump(user_data, f, separators=(',', ':'), ensure_ascii=False)
+        
     return {"message": "任务列表更新成功", "tasks": user_data["tasks"]}
+
 
 # ----------------- Queue Engine & State -----------------
 QUEUE_FILE = os.path.join(project_root, "Data", "queue.json")
@@ -603,6 +688,26 @@ def get_queue():
     with queue_lock:
         for item in queue_items:
             enriched_item = dict(item)
+            
+            # Enrich with task statistics
+            username = item["username"]
+            course_name = item["course_name"]
+            user_file = os.path.join(USER_DIR, f"{username}.json")
+            if os.path.exists(user_file):
+                try:
+                    with open(user_file, "r", encoding="utf-8-sig") as f:
+                        user_data = json.load(f)
+                    user_tasks = user_data.get("tasks", [])
+                    task = next((t for t in user_tasks if t["course_name"] == course_name), None)
+                    if task:
+                        enriched_item["current_question_num"] = task.get("current_question_num", 0)
+                        enriched_item["current_right_num"] = task.get("current_right_num", 0)
+                        enriched_item["low_right_rate"] = task.get("low_right_rate", 0.7)
+                        enriched_item["top_right_rate"] = task.get("top_right_rate", 0.9)
+                        enriched_item["finish"] = task.get("finish", False)
+                except Exception as e:
+                    root_logger.error(f"Error enriching queue item {item['id']}: {e}")
+            
             if item["status"] == "running":
                 q = manual_questions.get(item["id"])
                 if q:
@@ -760,6 +865,108 @@ def post_manual_answer(task_id: str, schema: SubmitManualAnswerSchema):
     return {"message": "答案已成功提交"}
 
 # ----------------- Logs APIs -----------------
+@app.get("/api/logs/stats")
+def get_logs_stats():
+    import glob
+    system_log_size = 0
+    task_logs_size = 0
+    task_logs_count = 0
+    
+    logs_dir = os.path.dirname(task_logs_dir)
+    
+    # Calculate system logs size
+    if os.path.exists(logs_dir):
+        for f in glob.glob(os.path.join(logs_dir, "app.log*")):
+            if os.path.isfile(f):
+                system_log_size += os.path.getsize(f)
+                
+    # Calculate task logs size
+    if os.path.exists(task_logs_dir):
+        for f in glob.glob(os.path.join(task_logs_dir, "*.log")):
+            if os.path.isfile(f):
+                task_logs_size += os.path.getsize(f)
+                task_logs_count += 1
+                
+    def format_size(size):
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024:
+                return f"{size:.2f} {unit}"
+            size /= 1024
+        return f"{size:.2f} TB"
+        
+    return {
+        "system_log_size": format_size(system_log_size),
+        "task_logs_size": format_size(task_logs_size),
+        "task_logs_count": task_logs_count
+    }
+
+@app.post("/api/logs/clear")
+def clear_logs():
+    import glob
+    cleaned_files = 0
+    errors = []
+    
+    # Determine running task ids
+    running_task_ids = set()
+    with queue_lock:
+        for item in queue_items:
+            if item["status"] == "running":
+                running_task_ids.add(item["id"])
+                
+    # 1. Clear task logs (except running ones)
+    if os.path.exists(task_logs_dir):
+        for f in glob.glob(os.path.join(task_logs_dir, "*.log")):
+            basename = os.path.basename(f)
+            task_id = os.path.splitext(basename)[0]
+            if task_id in running_task_ids:
+                continue
+            try:
+                os.remove(f)
+                cleaned_files += 1
+            except Exception as e:
+                errors.append(f"无法删除任务日志 {basename}: {e}")
+                
+    # 2. Clear app.log backups and truncate app.log
+    logs_dir = os.path.dirname(task_logs_dir)
+    if os.path.exists(logs_dir):
+        for f in glob.glob(os.path.join(logs_dir, "app.log.*")):
+            try:
+                os.remove(f)
+                cleaned_files += 1
+            except Exception as e:
+                errors.append(f"无法删除系统备份日志 {os.path.basename(f)}: {e}")
+                
+        main_app_log = os.path.join(logs_dir, "app.log")
+        if os.path.exists(main_app_log):
+            try:
+                # 寻找指向 app.log 且打开状态的文件处理器，并将其关闭以释放句柄
+                import logging
+                file_handlers = []
+                for handler in logging.getLogger().handlers:
+                    if isinstance(handler, logging.FileHandler) and os.path.abspath(handler.baseFilename) == os.path.abspath(main_app_log):
+                        file_handlers.append(handler)
+                        
+                for handler in file_handlers:
+                    handler.close()
+                    
+                # 安全清空并重写 app.log
+                with open(main_app_log, "w", encoding="utf-8") as f:
+                    f.write(f"=== 系统日志已于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 由用户清空 ===\n")
+                
+                # 重置处理器的 stream 为 None，使其在下次写入时自动重新打开文件
+                for handler in file_handlers:
+                    handler.stream = None
+                    
+                cleaned_files += 1
+            except Exception as e:
+                errors.append(f"无法清空系统日志 app.log: {e}")
+                
+    return {
+        "message": "日志清理完毕",
+        "cleaned_files_count": cleaned_files,
+        "errors": errors
+    }
+
 @app.get("/api/logs/{task_id}")
 def get_task_logs(task_id: str):
     log_file = os.path.join(task_logs_dir, f"{task_id}.log")

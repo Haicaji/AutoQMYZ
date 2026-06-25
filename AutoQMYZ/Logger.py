@@ -43,6 +43,24 @@ def setup_logging():
     logs_dir = os.path.join(project_root, 'Data', 'logs')
     os.makedirs(logs_dir, exist_ok=True)
     
+    # 自动清理 7 天前未修改过的任务日志文件
+    import time
+    task_logs_dir = os.path.join(logs_dir, 'tasks')
+    if os.path.exists(task_logs_dir):
+        now = time.time()
+        retention_period = 7 * 24 * 3600  # 7 days in seconds
+        try:
+            for filename in os.listdir(task_logs_dir):
+                file_path = os.path.join(task_logs_dir, filename)
+                if os.path.isfile(file_path) and filename.endswith('.log'):
+                    if (now - os.path.getmtime(file_path)) > retention_period:
+                        try:
+                            os.remove(file_path)
+                        except Exception:
+                            pass
+        except Exception as e:
+            sys.__stderr__.write(f"自动清理历史任务日志失败: {e}\n")
+    
     # 日志输出格式
     formatter = logging.Formatter(
         '[%(asctime)s] [%(levelname)s]: %(message)s',
