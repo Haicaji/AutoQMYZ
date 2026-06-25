@@ -105,8 +105,8 @@ def load_toml_config():
         default_config = {
             "ai": {
                 "api_key": "", 
-                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", 
-                "model": "gemini-3.1-flash-lite"
+                "base_url": "https://api.deepseek.com", 
+                "model": "deepseek-v4-flash"
             },
             "system": {
                 "task_parallel_limit": 1, 
@@ -141,8 +141,8 @@ def get_config():
     answer = config.get("answer", {})
     return {
         "api_key": ai.get("api_key", ""),
-        "base_url": ai.get("base_url", "https://api.openai.com/v1"),
-        "model": ai.get("model", "gpt-4o-mini"),
+        "base_url": ai.get("base_url", "https://api.deepseek.com"),
+        "model": ai.get("model", "deepseek-v4-flash"),
         "task_parallel_limit": system.get("task_parallel_limit", 1),
         "user_parallel_limit": system.get("user_parallel_limit", 1),
         "answer_priority": answer.get("answer_priority", ["db", "ai", "manual", "random"]),

@@ -30,8 +30,8 @@ def load_ai_config():
     
     return {
         'api_key': ai_config['api_key'],
-        'base_url': ai_config.get('base_url', 'https://api.openai.com/v1'),
-        'model': ai_config.get('model', 'gpt-4o-mini'),
+        'base_url': ai_config.get('base_url', 'https://api.deepseek.com'),
+        'model': ai_config.get('model', 'deepseek-v4-flash'),
     }
 
 def load_answer_config():
