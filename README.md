@@ -16,7 +16,7 @@
 
 ### 2. 解压
 
-将 zip 文件解压到任意目录（路径中**不要包含中文或空格**）。
+将 zip 文件解压到任意英文路径目录（建议路径中不要包含中文或空格）。解压后目录根部应直接包含 `AutoQMYZ.exe`。
 
 ### 3. 配置 AI API
 
@@ -44,12 +44,20 @@ model = "gpt-4o-mini"                    # 使用的模型名称
 - 实时查看答题日志
 - 修改系统设置
 
+Release 压缩包已经内置以下运行资源，普通用户不需要安装 Python、Node.js、Chrome 或 ChromeDriver：
+
+- `AutoQMYZ.exe`：由 GitHub Actions 在 Windows 上使用 Python 3.12 + PyInstaller 编译
+- `Data/Question_data`：随包发布的本地题库
+- `WebUI/dist`：已编译的前端静态资源，字体和 UI 组件随前端包本地构建
+- `ChromeWithDriver`：便携版 Chrome for Testing、匹配的 ChromeDriver，以及 `stealth.min.js` 反检测脚本
+- `config.toml`、`README.md`、`LICENSE`
+
 ## 目录结构
 
 ```
 AutoQMYZ/
-|-- AutoQMYZ.exe                # 主程序（Release 版本）
-|-- AutoQMYZ.py                 # 主程序源码（开发版本）
+|-- AutoQMYZ.exe                # 主程序（Release 版本，双击运行）
+|-- AutoQMYZ.py                 # 主程序源码
 |
 |-- AutoQMYZ/                   # 核心答题模块
 |   |-- QingMYZMain.py          # 主类 QingMYZClass
@@ -65,8 +73,11 @@ AutoQMYZ/
 |   |   |-- AntiRobotDetection.py # 防刷题检测
 |   |   |-- StandardQuestion.py # 题目标准化
 |
-|-- ChromeWithDriver/           # 内置Chrome浏览器及对应版本驱动
+|-- ChromeWithDriver/           # 内置 Chrome 浏览器及对应版本驱动
+|   |-- chrome.exe
+|   |-- chromedriver112.exe
 |   |-- stealth.min.js          # 反爬虫检测脚本
+|   |-- chrome-version.txt      # CI 打包时使用的 Chrome for Testing 版本
 |
 |-- Data/                       # 数据文件
 |   |-- logs/                   # 运行日志目录(按天轮转)
@@ -77,7 +88,8 @@ AutoQMYZ/
 |-- WebUI/                      # Web管理界面
 |   |-- dist/                   # 编译后的前端静态文件
 |
-|-- config.toml                 # 全局配置文件
+|-- config.toml                 # 全局配置文件（Release 版本会由模板生成）
+|-- config.toml.template        # 配置模板
 |-- README.md
 ```
 
@@ -88,7 +100,7 @@ AutoQMYZ/
 ### 环境要求
 
 - Python 3.12+
-- Node.js 18+
+- Node.js 22+（或 20.19+）
 
 ### 安装依赖
 
@@ -118,3 +130,12 @@ git push origin v1.0.0
 ```
 
 也可以在 GitHub Actions 页面手动触发 **Build and Release** workflow，输入版本号即可自动创建 tag 并发布。
+
+Release workflow 会执行以下打包步骤：
+
+1. 使用 Python 3.12 安装依赖并通过 PyInstaller 编译 `AutoQMYZ.py` 为 `AutoQMYZ.exe`
+2. 使用 Node.js 22 执行 `npm ci` 和 `npm run build`，生成 `WebUI/dist`
+3. 下载 Chrome for Testing 稳定版和匹配 ChromeDriver，复制到 `ChromeWithDriver`
+4. 复制题库、配置模板、README、LICENSE 和源码目录
+5. 校验 zip 中是否包含 exe、题库、前端产物、Chrome、ChromeDriver 和 `stealth.min.js`
+6. 上传 `AutoQMYZ-vX.X.X.zip` 到 GitHub Release

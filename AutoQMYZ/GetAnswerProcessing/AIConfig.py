@@ -1,16 +1,11 @@
 # AI API 配置加载模块
 import tomllib
 
-from os.path import abspath, dirname, exists, join
-
-# 当前所在绝对路径
-current_dir = dirname(abspath(__file__))
-# 返回上一级目录(GetAnswerProcessing/ -> AutoQMYZ/ -> 项目根目录)
-current_dir = dirname(current_dir)
-current_dir = dirname(current_dir)
+from os.path import exists, join
+from AutoQMYZ import get_project_root
 
 # 配置文件路径
-AI_CONFIG_PATH = join(current_dir, 'config.toml')
+AI_CONFIG_PATH = join(get_project_root(), 'config.toml')
 
 def load_ai_config():
     """

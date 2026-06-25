@@ -1,6 +1,5 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-import sys
 import time
 import json
 import random
@@ -311,19 +310,13 @@ class QingMYZClass():
 
     # 创建浏览器控制驱动
     def __createDriver(self, UA):
-        # 当前所在绝对路径 — 兼容 PyInstaller 打包模式
-        if getattr(sys, 'frozen', False):
-            current_dir = os.path.dirname(sys.executable)
-        else:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            # 返回上一级目录(AutoQMYZ/ -> 项目根目录)
-            current_dir = os.path.dirname(current_dir)
+        current_dir = get_project_root()
 
         # 配置浏览器选项
         options = webdriver.ChromeOptions()
 
         # 设置chrome浏览器路径
-        options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
+        options.binary_location = os.path.join(current_dir, "ChromeWithDriver", "chrome.exe")
 
         # 根据配置决定是否以最小化启动（配合之后的隐藏/显示控制）
         if not getattr(self, 'show_browser_gui', False):
@@ -340,10 +333,11 @@ class QingMYZClass():
         options.add_argument('user-agent=' + ua + ";webank/h5face;webank/1.0 yiban_android/5.0.17")
 
         # 设置chromedriver路径
-        service = Service(f"{current_dir}\\ChromeWithDriver\\chromedriver112.exe")
+        service = Service(os.path.join(current_dir, "ChromeWithDriver", "chromedriver112.exe"))
 
         # 创建浏览器
         driver = webdriver.Chrome(service=service, options=options)
+        apply_stealth_script(driver, current_dir)
 
         # 设置最长刷新等待时间
         driver.implicitly_wait(10)

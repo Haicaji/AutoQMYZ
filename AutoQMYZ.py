@@ -328,7 +328,7 @@ def verify_user_login(username: str):
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.common.by import By
-    from AutoQMYZ.ImitateProcessing.AntiRobotDetection import get_ua
+    from AutoQMYZ.ImitateProcessing.AntiRobotDetection import get_ua, apply_stealth_script
     from AutoQMYZ.ImitateProcessing.Login import login_user_by_code, login_user_by_verify_request
     
     options = webdriver.ChromeOptions()
@@ -346,6 +346,7 @@ def verify_user_login(username: str):
     
     try:
         driver = webdriver.Chrome(service=service, options=options)
+        apply_stealth_script(driver, project_root)
         driver.implicitly_wait(10)
         
         login_ok = False

@@ -1,15 +1,13 @@
 name: Build and Release
 
 on:
-  # 推送 v* tag 时自动触发
   push:
     tags:
       - 'v*'
-  # 手动触发：在 GitHub Actions 页面点击运行，输入版本号自动创建 tag
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (例如: v1.0.0)'
+        description: '版本号，例如 v1.0.0'
         required: true
         type: string
 
@@ -18,119 +16,103 @@ permissions:
 
 jobs:
   build-and-release:
+    name: Build Windows release package
     runs-on: windows-latest
-    steps:
-      # ============ 准备阶段 ============
 
+    steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # 确定版本号 — tag 触发用 tag 名；手动触发用输入的版本号
       - name: Determine version
         id: version
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${{ github.ref_name }}"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
-      # 手动触发时，自动创建 tag
-      - name: Create tag (manual trigger)
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.version.outputs.VERSION }}"
-          git push origin "${{ steps.version.outputs.VERSION }}"
-
-      # ============ 下载 Chrome + ChromeDriver ============
-
-      - name: Download Chrome 112 and ChromeDriver
         shell: pwsh
         run: |
-          $chromeDriverUrl = "https://chromedriver.storage.googleapis.com/112.0.5615.49/chromedriver_win32.zip"
-          # Chrome 112 win32 from official Google storage
-          $chromeUrl = "https://storage.googleapis.com/chromium-browser-snapshots/Win/1109224/chrome-win32.zip"
-
-          New-Item -ItemType Directory -Force -Path "ChromeWithDriver"
-
-          # Download ChromeDriver
-          Write-Host "Downloading ChromeDriver 112..."
-          Invoke-WebRequest -Uri $chromeDriverUrl -OutFile "chromedriver.zip" -UseBasicParsing
-          Expand-Archive -Path "chromedriver.zip" -DestinationPath "chromedriver_temp" -Force
-          # chromedriver_win32/chromedriver.exe -> ChromeWithDriver/chromedriver112.exe
-          Copy-Item "chromedriver_temp/chromedriver_win32/chromedriver.exe" "ChromeWithDriver/chromedriver112.exe"
-          Remove-Item "chromedriver.zip", "chromedriver_temp" -Recurse -Force
-
-          # Download Chrome (Chromium snapshot matching 112.0.5615.x)
-          Write-Host "Downloading Chromium 112..."
-          Invoke-WebRequest -Uri $chromeUrl -OutFile "chrome.zip" -UseBasicParsing
-          Expand-Archive -Path "chrome.zip" -DestinationPath "chrome_temp" -Force
-          # Copy all Chrome files into ChromeWithDriver/
-          Get-ChildItem "chrome_temp/chrome-win32/*" | Copy-Item -Destination "ChromeWithDriver/" -Recurse -Force
-          Remove-Item "chrome.zip", "chrome_temp" -Recurse -Force
-
-          # Copy stealth.min.js (committed in repo)
-          if (Test-Path "ChromeWithDriver/stealth.min.js") {
-            Write-Host "stealth.min.js found in repo"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}".Trim()
           } else {
-            Write-Host "WARNING: stealth.min.js not found!"
+            $version = "${{ github.ref_name }}".Trim()
           }
 
-          Write-Host "ChromeWithDriver contents:"
-          Get-ChildItem "ChromeWithDriver" | Format-Table Name, Length
+          if (-not $version.StartsWith("v")) {
+            throw "版本号必须以 v 开头，例如 v1.0.0。当前输入: $version"
+          }
 
-      # ============ Python 编译 ============
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Release version: $version"
+
+      - name: Create tag for manual run
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --force
+
+          $existingTag = git tag --list $version
+          if ($existingTag) {
+            $tagSha = git rev-list -n 1 $version
+            if ($tagSha -ne "${{ github.sha }}") {
+              throw "Tag $version 已存在，但不指向当前提交。请换一个版本号。"
+            }
+            Write-Host "Tag $version already exists on this commit."
+          } else {
+            git tag $version
+            git push origin $version
+          }
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: Install Python dependencies
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller pyinstaller-hooks-contrib
 
-      - name: Build exe with PyInstaller
+      - name: Build AutoQMYZ.exe with PyInstaller
+        shell: pwsh
         run: |
-          pyinstaller --onefile --name AutoQMYZ `
-            --hidden-import=toml `
-            --hidden-import=uvicorn `
-            --hidden-import=uvicorn.logging `
-            --hidden-import=uvicorn.loops `
-            --hidden-import=uvicorn.loops.auto `
-            --hidden-import=uvicorn.protocols `
-            --hidden-import=uvicorn.protocols.http `
-            --hidden-import=uvicorn.protocols.http.auto `
-            --hidden-import=uvicorn.protocols.websockets `
-            --hidden-import=uvicorn.protocols.websockets.auto `
-            --hidden-import=uvicorn.lifespan `
-            --hidden-import=uvicorn.lifespan.on `
-            --hidden-import=uvicorn.lifespan.off `
-            --hidden-import=fastapi `
-            --hidden-import=pydantic `
-            --hidden-import=pandas `
-            --hidden-import=selenium `
-            --hidden-import=fake_useragent `
-            --hidden-import=Crypto `
-            --hidden-import=Crypto.Cipher `
-            --hidden-import=Crypto.Cipher.AES `
-            --collect-submodules=AutoQMYZ `
-            AutoQMYZ.py
+          $pyInstallerArgs = @(
+            "--noconfirm",
+            "--clean",
+            "--onefile",
+            "--name", "AutoQMYZ",
+            "--collect-submodules", "AutoQMYZ",
+            "--collect-submodules", "Crypto",
+            "--collect-submodules", "fastapi",
+            "--collect-submodules", "pydantic",
+            "--collect-submodules", "selenium",
+            "--collect-submodules", "uvicorn",
+            "--collect-all", "fake_useragent",
+            "--hidden-import", "toml",
+            "--hidden-import", "uvicorn.logging",
+            "--hidden-import", "uvicorn.loops.auto",
+            "--hidden-import", "uvicorn.protocols.http.auto",
+            "--hidden-import", "uvicorn.protocols.websockets.auto",
+            "--hidden-import", "uvicorn.lifespan.on",
+            "AutoQMYZ.py"
+          )
 
-      # ============ 前端编译 ============
+          python -m PyInstaller @pyInstallerArgs
+
+          if (-not (Test-Path "dist\AutoQMYZ.exe")) {
+            throw "PyInstaller did not create dist\AutoQMYZ.exe"
+          }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: WebUI/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: WebUI
@@ -140,64 +122,179 @@ jobs:
         working-directory: WebUI
         run: npm run build
 
-      # ============ 组装发行包 ============
+      - name: Validate frontend assets are local
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "WebUI\dist\index.html")) {
+            throw "WebUI build output missing: WebUI\dist\index.html"
+          }
+
+          $remotePatterns = @(
+            "fonts.googleapis.com",
+            "fonts.gstatic.com",
+            "cdn.jsdelivr.net",
+            "unpkg.com",
+            "esm.sh",
+            "skypack.dev"
+          )
+
+          $textFiles = Get-ChildItem "WebUI\dist" -Recurse -File |
+            Where-Object { $_.Extension -in @(".html", ".js", ".css") }
+
+          foreach ($pattern in $remotePatterns) {
+            $matches = $textFiles | Select-String -Pattern $pattern -SimpleMatch
+            if ($matches) {
+              throw "WebUI dist still references remote frontend asset host: $pattern"
+            }
+          }
+
+      - name: Download portable Chrome and ChromeDriver
+        shell: pwsh
+        run: |
+          $metadataUrl = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+          $metadata = Invoke-RestMethod -Uri $metadataUrl
+          $stable = $metadata.channels.Stable
+          $platform = "win64"
+
+          $chromeUrl = ($stable.downloads.chrome | Where-Object { $_.platform -eq $platform } | Select-Object -First 1).url
+          $driverUrl = ($stable.downloads.chromedriver | Where-Object { $_.platform -eq $platform } | Select-Object -First 1).url
+
+          if (-not $chromeUrl -or -not $driverUrl) {
+            throw "Cannot find Chrome for Testing download URLs for platform $platform"
+          }
+
+          Write-Host "Chrome for Testing version: $($stable.version)"
+          Write-Host "Chrome URL: $chromeUrl"
+          Write-Host "ChromeDriver URL: $driverUrl"
+
+          New-Item -ItemType Directory -Force -Path "ChromeWithDriver" | Out-Null
+
+          Invoke-WebRequest -Uri $chromeUrl -OutFile "chrome.zip"
+          Expand-Archive -Path "chrome.zip" -DestinationPath "chrome_temp" -Force
+          $chromeRoot = Get-ChildItem "chrome_temp" -Directory | Select-Object -First 1
+          if (-not $chromeRoot) {
+            throw "Chrome archive did not contain a directory"
+          }
+          Copy-Item -Path (Join-Path $chromeRoot.FullName "*") -Destination "ChromeWithDriver" -Recurse -Force
+
+          Invoke-WebRequest -Uri $driverUrl -OutFile "chromedriver.zip"
+          Expand-Archive -Path "chromedriver.zip" -DestinationPath "chromedriver_temp" -Force
+          $driverExe = Get-ChildItem "chromedriver_temp" -Recurse -Filter "chromedriver.exe" | Select-Object -First 1
+          if (-not $driverExe) {
+            throw "ChromeDriver archive did not contain chromedriver.exe"
+          }
+          Copy-Item -Path $driverExe.FullName -Destination "ChromeWithDriver\chromedriver112.exe" -Force
+
+          $stable.version | Out-File "ChromeWithDriver\chrome-version.txt" -Encoding utf8
+
+          if (-not (Test-Path "ChromeWithDriver\stealth.min.js")) {
+            throw "ChromeWithDriver\stealth.min.js is missing from the repository checkout"
+          }
+          if (-not (Test-Path "ChromeWithDriver\chrome.exe")) {
+            throw "ChromeWithDriver\chrome.exe was not created"
+          }
+          if (-not (Test-Path "ChromeWithDriver\chromedriver112.exe")) {
+            throw "ChromeWithDriver\chromedriver112.exe was not created"
+          }
+
+          Remove-Item "chrome.zip", "chromedriver.zip", "chrome_temp", "chromedriver_temp" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Assemble release package
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
-          $pkgDir = "release-pkg\AutoQMYZ"
+          $releaseRoot = "release-pkg"
+          $pkgDir = Join-Path $releaseRoot "AutoQMYZ"
+          $zipPath = "AutoQMYZ-$version.zip"
 
-          # 创建目录结构
-          New-Item -ItemType Directory -Force -Path "$pkgDir\Data\Question_data"
-          New-Item -ItemType Directory -Force -Path "$pkgDir\Data\User"
-          New-Item -ItemType Directory -Force -Path "$pkgDir\Data\logs"
-          New-Item -ItemType Directory -Force -Path "$pkgDir\WebUI"
-          New-Item -ItemType Directory -Force -Path "$pkgDir\AutoQMYZ\GetAnswerProcessing"
-          New-Item -ItemType Directory -Force -Path "$pkgDir\AutoQMYZ\ImitateProcessing"
-
-          # 1. 复制编译后的 exe
-          Copy-Item "dist\AutoQMYZ.exe" "$pkgDir\"
-
-          # 2. 复制题库数据
-          if (Test-Path "Data\Question_data") {
-            Copy-Item "Data\Question_data\*" "$pkgDir\Data\Question_data\" -Recurse
+          if (Test-Path $releaseRoot) {
+            Remove-Item $releaseRoot -Recurse -Force
+          }
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
           }
 
-          # 3. 复制编译后的前端
-          Copy-Item "WebUI\dist" "$pkgDir\WebUI\dist" -Recurse
+          New-Item -ItemType Directory -Force -Path "$pkgDir\Data\Question_data" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$pkgDir\Data\User" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$pkgDir\Data\logs" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$pkgDir\WebUI" | Out-Null
 
-          # 4. 复制 ChromeWithDriver（含 stealth.min.js 等反爬脚本）
-          Copy-Item "ChromeWithDriver" "$pkgDir\ChromeWithDriver" -Recurse
-          # 移除不需要的 debug.log
-          if (Test-Path "$pkgDir\ChromeWithDriver\debug.log") {
-            Remove-Item "$pkgDir\ChromeWithDriver\debug.log"
-          }
+          Copy-Item "dist\AutoQMYZ.exe" "$pkgDir\AutoQMYZ.exe" -Force
+          Copy-Item "AutoQMYZ.py" "$pkgDir\AutoQMYZ.py" -Force
+          Copy-Item "AutoQMYZ" "$pkgDir\AutoQMYZ" -Recurse -Force
+          Copy-Item "Data\Question_data\*" "$pkgDir\Data\Question_data" -Recurse -Force
+          Copy-Item "WebUI\dist" "$pkgDir\WebUI\dist" -Recurse -Force
+          Copy-Item "ChromeWithDriver" "$pkgDir\ChromeWithDriver" -Recurse -Force
+          Copy-Item "config.toml.template" "$pkgDir\config.toml" -Force
+          Copy-Item "config.toml.template" "$pkgDir\config.toml.template" -Force
+          Copy-Item "README.md" "$pkgDir\README.md" -Force
+          Copy-Item "requirements.txt" "$pkgDir\requirements.txt" -Force
 
-          # 5. 复制核心 Python 模块
-          Copy-Item "AutoQMYZ\*.py" "$pkgDir\AutoQMYZ\"
-          Copy-Item "AutoQMYZ\GetAnswerProcessing\*.py" "$pkgDir\AutoQMYZ\GetAnswerProcessing\"
-          Copy-Item "AutoQMYZ\ImitateProcessing\*.py" "$pkgDir\AutoQMYZ\ImitateProcessing\"
-
-          # 6. 复制配置模板（重命名为 config.toml）
-          Copy-Item "config.toml.template" "$pkgDir\config.toml"
-
-          # 7. 复制 README 和 LICENSE
-          Copy-Item "README.md" "$pkgDir\"
           if (Test-Path "LICENSE") {
-            Copy-Item "LICENSE" "$pkgDir\"
+            Copy-Item "LICENSE" "$pkgDir\LICENSE" -Force
           }
 
-          # 8. 复制 requirements.txt（供开发者参考）
-          Copy-Item "requirements.txt" "$pkgDir\"
+          Get-ChildItem "$pkgDir" -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+          Get-ChildItem "$pkgDir" -Recurse -File -Include "*.pyc", "*.pyo", "debug.log" | Remove-Item -Force
 
-          # 打包为 zip
-          Compress-Archive -Path "release-pkg\AutoQMYZ" -DestinationPath "AutoQMYZ-$version.zip"
+          $requiredPaths = @(
+            "$pkgDir\AutoQMYZ.exe",
+            "$pkgDir\AutoQMYZ.py",
+            "$pkgDir\AutoQMYZ\QingMYZMain.py",
+            "$pkgDir\Data\Question_data",
+            "$pkgDir\WebUI\dist\index.html",
+            "$pkgDir\ChromeWithDriver\chrome.exe",
+            "$pkgDir\ChromeWithDriver\chromedriver112.exe",
+            "$pkgDir\ChromeWithDriver\stealth.min.js",
+            "$pkgDir\config.toml",
+            "$pkgDir\README.md"
+          )
 
-          Write-Host "===== Release package created: AutoQMYZ-$version.zip ====="
-          Get-ChildItem "release-pkg\AutoQMYZ" -Recurse | Select-Object FullName
+          foreach ($path in $requiredPaths) {
+            if (-not (Test-Path $path)) {
+              throw "Release package missing required path: $path"
+            }
+          }
 
-      # ============ 发布 Release ============
+          $questionFiles = Get-ChildItem "$pkgDir\Data\Question_data" -Filter "*.csv" -File
+          if ($questionFiles.Count -lt 1) {
+            throw "Release package has no question CSV files"
+          }
+
+          Compress-Archive -Path "$pkgDir\*" -DestinationPath $zipPath -Force
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipFullPath = (Resolve-Path $zipPath).Path
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipFullPath)
+          try {
+            $entries = $zip.Entries.FullName -replace '/', '\'
+            foreach ($entry in @(
+              "AutoQMYZ.exe",
+              "Data\Question_data\$($questionFiles[0].Name)",
+              "WebUI\dist\index.html",
+              "ChromeWithDriver\chrome.exe",
+              "ChromeWithDriver\chromedriver112.exe",
+              "ChromeWithDriver\stealth.min.js",
+              "config.toml",
+              "README.md"
+            )) {
+              if ($entries -notcontains $entry) {
+                throw "Zip missing required entry: $entry"
+              }
+            }
+          } finally {
+            $zip.Dispose()
+          }
+
+          Write-Host "Created $zipPath"
+          Get-ChildItem $zipPath | Format-List Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoQMYZ-${{ steps.version.outputs.VERSION }}
+          path: AutoQMYZ-${{ steps.version.outputs.VERSION }}.zip
+          if-no-files-found: error
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -208,19 +305,20 @@ jobs:
             ## AutoQMYZ ${{ steps.version.outputs.VERSION }}
 
             ### 使用方法
-            1. 下载下方的 `AutoQMYZ-${{ steps.version.outputs.VERSION }}.zip`
-            2. 解压到任意目录（路径中不要包含中文或空格）
-            3. 编辑 `config.toml` 填入你的 AI API 密钥
-            4. 双击 `AutoQMYZ.exe` 启动
-            5. 在浏览器中打开 http://127.0.0.1:8000
+            1. 下载 `AutoQMYZ-${{ steps.version.outputs.VERSION }}.zip`
+            2. 解压到任意英文路径目录
+            3. 编辑 `config.toml`，填入 AI API 配置
+            4. 双击 `AutoQMYZ.exe`
+            5. 浏览器打开 http://127.0.0.1:8000
 
             ### 包含内容
-            - ✅ AutoQMYZ.exe（开箱即用，无需安装 Python）
-            - ✅ 内置 Chrome 浏览器及驱动
-            - ✅ WebUI 管理界面
-            - ✅ 题库数据
-            - ✅ 反爬虫检测脚本 (stealth.min.js)
-          files: |
-            AutoQMYZ-${{ steps.version.outputs.VERSION }}.zip
+            - AutoQMYZ.exe，基于 Python 3.12 构建
+            - 本地编译后的 WebUI 静态资源
+            - Data/Question_data 题库
+            - 便携版 Chrome for Testing 与匹配 ChromeDriver
+            - ChromeWithDriver/stealth.min.js 反检测脚本
+            - README.md、LICENSE、配置模板
+          files: AutoQMYZ-${{ steps.version.outputs.VERSION }}.zip
+          fail_on_unmatched_files: true
           draft: false
           prerelease: false

@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 from logging.handlers import TimedRotatingFileHandler
+from AutoQMYZ import get_project_root
 
 class LoggerWriter:
     """
@@ -35,11 +36,7 @@ class LoggerWriter:
         return False
 
 def setup_logging():
-    # 当前所在绝对路径 (Logger.py 位于 AutoQMYZ/ 下)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 项目根目录
-    project_root = os.path.dirname(current_dir)
-    
+    project_root = get_project_root()
     logs_dir = os.path.join(project_root, 'Data', 'logs')
     os.makedirs(logs_dir, exist_ok=True)
     

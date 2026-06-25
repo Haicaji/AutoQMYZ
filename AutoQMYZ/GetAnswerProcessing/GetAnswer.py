@@ -8,19 +8,16 @@ import msvcrt
 import sys
 import random
 
-from os.path import exists, abspath, dirname
+from os.path import exists
 from time import sleep
 
+from AutoQMYZ import get_project_root
 from AutoQMYZ.GetAnswerProcessing.AIConfig import load_ai_config, load_answer_config
 
 # 全局人工作答状态暂存器 (task_id -> question_info)
 manual_questions = {}
 
-# 当前所在绝对路径
-current_dir = dirname(abspath(__file__))
-# 返回上一级目录(GetAnswerProcessing/ -> AutoQMYZ/ -> 项目根目录)
-current_dir = dirname(current_dir)
-current_dir = dirname(current_dir)
+current_dir = get_project_root()
 
 # 通过本地获取答案
 def get_answer_by_local(question, course_name):
