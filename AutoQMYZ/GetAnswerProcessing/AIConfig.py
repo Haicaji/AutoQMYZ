@@ -38,3 +38,29 @@ def load_ai_config():
         'base_url': ai_config.get('base_url', 'https://api.openai.com/v1'),
         'model': ai_config.get('model', 'gpt-4o-mini'),
     }
+
+def load_answer_config():
+    """
+    加载答题优先级和超时配置。
+    """
+    if not exists(AI_CONFIG_PATH):
+        return {
+            "answer_priority": ["db", "ai", "manual", "random"],
+            "manual_timeout": 30.0
+        }
+    
+    try:
+        with open(AI_CONFIG_PATH, 'rb') as f:
+            config = tomllib.load(f)
+        
+        answer_config = config.get('answer', {})
+        return {
+            "answer_priority": answer_config.get("answer_priority", ["db", "ai", "manual", "random"]),
+            "manual_timeout": float(answer_config.get("manual_timeout", 30))
+        }
+    except Exception as e:
+        print(f"加载答题优先级配置失败: {e}")
+        return {
+            "answer_priority": ["db", "ai", "manual", "random"],
+            "manual_timeout": 30.0
+        }

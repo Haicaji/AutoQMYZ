@@ -4,11 +4,16 @@ import pandas as pd
 import requests
 import time
 import re
+import msvcrt
+import sys
 
 from os.path import exists, abspath, dirname
 from time import sleep
 
-from AutoQMYZ.GetAnswerProcessing.AIConfig import load_ai_config
+from AutoQMYZ.GetAnswerProcessing.AIConfig import load_ai_config, load_answer_config
+
+# 全局人工作答状态暂存器 (task_id -> question_info)
+manual_questions = {}
 
 # 当前所在绝对路径
 current_dir = dirname(abspath(__file__))
@@ -83,6 +88,88 @@ def get_answer_by_human(question):
         answer.append(question[2][ans-1])
 
     return answer
+
+# 人工答题（带超时）
+def get_answer_by_human_timeout(question, timeout):
+    print(f"\n=================== 人工作答 (限时 {timeout} 秒) ===================")
+    print(f"【题型】: {question[0]}")
+    print(f"【题目】: {question[1]}")
+    for index, option in enumerate(question[2], start=1):
+        print(f"  {index} : {option}")
+    print("----------------------------------------------------------------")
+    
+    import threading
+    thread_name = threading.current_thread().name
+    if thread_name.startswith("task_"):
+        task_id = thread_name[5:]
+        
+        # 将问题存入全局状态
+        manual_questions[task_id] = {
+            "question": question,
+            "timeout": timeout,
+            "start_time": time.time(),
+            "answer": None
+        }
+        
+        print(f"[Manual] Waiting for WebUI input for task: {task_id}...")
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            q_info = manual_questions.get(task_id)
+            if q_info and q_info["answer"] is not None:
+                answer = q_info["answer"]
+                manual_questions.pop(task_id, None)
+                print(f"[Manual] Received WebUI answer: {answer}")
+                return answer
+            time.sleep(0.2)
+            
+        manual_questions.pop(task_id, None)
+        print("[Manual] Timeout, skipping...")
+        return []
+    else:
+        # 控制台输入回退
+        prompt = f"请在此处输入答案序号 (多个请用空格隔开，超时将跳过): "
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        
+        start_time = time.time()
+        input_str = ''
+        
+        while True:
+            if msvcrt.kbhit():
+                char = msvcrt.getwche()
+                if char in ('\r', '\n'):
+                    sys.stdout.write('\n')
+                    break
+                elif char == '\b':  # Backspace
+                    if len(input_str) > 0:
+                        input_str = input_str[:-1]
+                        sys.stdout.write(' \b')
+                        sys.stdout.flush()
+                else:
+                    input_str += char
+                    
+            if time.time() - start_time > timeout:
+                sys.stdout.write('\n[超时已过，跳过当前人工作答]\n')
+                return []
+                
+            time.sleep(0.05)
+            
+        cleaned_input = input_str.strip()
+        if not cleaned_input:
+            return []
+            
+        answer_list = cleaned_input.split()
+        answer = []
+        
+        for ans in answer_list:
+            try:
+                ans_idx = int(ans)
+                if 1 <= ans_idx <= len(question[2]):
+                    answer.append(question[2][ans_idx - 1])
+            except ValueError:
+                pass
+                
+        return answer
 
 # 通过 OpenAI 兼容 API 获取答案（单次调用）
 def get_answer_by_ai_mini(question, ai_config):
@@ -174,21 +261,42 @@ def get_answer_by_ai(question, ai_config):
 
 # 通过所有方式获取答案
 def get_answer_by_all(question, course_name):
-    answer = get_answer_by_local(question, course_name)
-    if answer == []:
-        ai_config = load_ai_config()
-        if ai_config is not None:
-            answer = get_answer_by_ai(question, ai_config)
-
-        if answer == []:
-            # answer = get_answer_by_human(question)
-            answer = question[-1][0]
-            print("随机答案：" + answer)
-        else:
-            print(f"AI回答{answer}")
-    else:
-        print(f"本地题库回答{answer}")
-
+    # 加载答题优先级配置
+    ans_config = load_answer_config()
+    priority = ans_config.get("answer_priority", ["db", "ai", "manual", "random"])
+    manual_timeout = ans_config.get("manual_timeout", 30.0)
+    
+    answer = []
+    
+    for strategy in priority:
+        if strategy == "db":
+            answer = get_answer_by_local(question, course_name)
+            if answer:
+                print(f"【题库】回答: {answer}")
+                break
+        elif strategy == "ai":
+            ai_config = load_ai_config()
+            if ai_config is not None:
+                answer = get_answer_by_ai(question, ai_config)
+                if answer:
+                    print(f"【AI】回答: {answer}")
+                    break
+        elif strategy == "manual":
+            answer = get_answer_by_human_timeout(question, manual_timeout)
+            if answer:
+                print(f"【人工】回答: {answer}")
+                break
+        elif strategy == "random":
+            if len(question) > 2 and question[2]:
+                answer = [question[2][0]]
+                print(f"【随机】回答: {answer}")
+                break
+                
+    if not answer:
+        if len(question) > 2 and question[2]:
+            answer = [question[2][0]]
+            print(f"【保底随机】回答: {answer}")
+            
     return answer
 
 def get_answer_by_all_right(question, course_name):

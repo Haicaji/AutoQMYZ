@@ -13,21 +13,30 @@ class QingMYZClass():
         # 必须参数
         self.__user_data_file = user_data_file
         self.__login_key = []
-        self.__courses = []
+        self.__tasks = []
         self.__UA = ''
         self.__verify_request = ''
         self.finish = False # 是否已经完成
+        self.driver = None # 暴露当前的浏览器驱动，用于外部终止任务
+        self.stopped = False # 外部终止标志
 
         # 初始化
         self.__getUserData()
+
+    def _sleep(self, seconds):
+        start = time.time()
+        while time.time() - start < seconds:
+            if getattr(self, 'stopped', False):
+                raise InterruptedError("Task stopped manually")
+            time.sleep(0.1)
 
     def del__(self):
         self.__updataUserData()
         
         # 只有当所有的课程都完成时，整个用户配置才算完成
         all_finished = True
-        for course in self.__courses:
-            if not course.get('finish', False):
+        for task in self.__tasks:
+            if not task.get('finish', False):
                 all_finished = False
                 break
         self.finish = all_finished
@@ -39,30 +48,52 @@ class QingMYZClass():
         self.__getUserData()
 
         # 遍历处理该用户的所有未完成课程
-        for index, course in enumerate(self.__courses):
-            if course.get('finish', False):
+        for index, task in enumerate(self.__tasks):
+            if task.get('finish', False):
                 continue
 
-            print(f"\n================ 开始处理课程: {course['course_name']} ================")
+            print(f"\n================ 开始处理课程: {task['course_name']} ================")
             try:
                 self.__run_single_course(index)
             except Exception as e:
-                print(f"处理课程 {course['course_name']} 时发生异常: {e}")
+                print(f"处理课程 {task['course_name']} 时发生异常: {e}")
                 # 即使某一门课失败，也继续处理下一门课，或者选择向上传播异常
                 raise e
 
+    # 运行单个特定任务
+    def run_single_task_by_name(self, course_name):
+        self.__getUserData()
+        for index, task in enumerate(self.__tasks):
+            if task['course_name'] == course_name:
+                if task.get('finish', False):
+                    print(f"课程 {course_name} 已完成，无需运行。")
+                    return
+                print(f"\n================ 开始处理课程: {task['course_name']} ================")
+                try:
+                    self.__run_single_course(index)
+                except Exception as e:
+                    print(f"处理课程 {task['course_name']} 时发生异常: {e}")
+                    raise e
+                return
+        raise ValueError(f"未找到课程: {course_name}")
+
     # 运行单个课程的答题流程
     def __run_single_course(self, course_index):
-        course = self.__courses[course_index]
+        task = self.__tasks[course_index]
 
         # 获取浏览器控制驱动
         try_times = 0 # 异常后再次尝试次数
         while True: 
+            if getattr(self, 'stopped', False):
+                raise InterruptedError("Task stopped manually")
             try:
                 driver, self.__UA = self.__createDriver(self.__UA)
+                self.driver = driver # 记录驱动实例以供外部中断
                 self.__updataUserData() # 及时保存更新后的 UA
                 break
             except Exception as e:
+                if getattr(self, 'stopped', False):
+                    raise e
                 try_times += 1
                 if try_times > 1:
                     print('创建浏览器控制驱动失败')
@@ -72,6 +103,8 @@ class QingMYZClass():
             # 登入
             try_times = 0 # 异常后再次尝试次数
             while True:
+                if getattr(self, 'stopped', False):
+                    raise InterruptedError("Task stopped manually")
                 try:
                     if len(self.__login_key) > 1:
                         # 账号密码登入
@@ -85,6 +118,8 @@ class QingMYZClass():
                     self.__updataUserData() # 及时保存更新后的 verify_request 与 UA
                     break
                 except Exception as e:
+                    if getattr(self, 'stopped', False):
+                        raise e
                     try_times += 1
                     if try_times > 1:
                         print('登入失败')
@@ -93,10 +128,14 @@ class QingMYZClass():
             # 进入答题页面
             try_times = 0 # 异常后再次尝试次数
             while True:
+                if getattr(self, 'stopped', False):
+                    raise InterruptedError("Task stopped manually")
                 try:
-                    into_answer_web(driver, course['course_name'])
+                    into_answer_web(driver, task['course_name'])
                     break
                 except Exception as e:
+                    if getattr(self, 'stopped', False):
+                        raise e
                     try_times += 1
                     if try_times > 1:
                         print('进入答题页面失败')
@@ -109,17 +148,14 @@ class QingMYZClass():
             robot_detected_time = 0
 
             # 从配置中解析当前课程的各项参数
-            aim_questions_num_total = int(course['aim_questions_num_total'])
-            questions_num_day_max = int(course['questions_num_day_max'])
-            # 增加随机范围
-            questions_num_day_max += random.randint(0, 10)
+            aim_questions_num_total = int(task['aim_questions_num_total'])
 
-            low_right_rate = float(course.get('low_right_rate', 0.65))
-            top_right_rate = float(course.get('top_right_rate', 1.00))
-            min_question_time = float(course.get('min_question_time', 5.0))
+            low_right_rate = float(task.get('low_right_rate', 0.65))
+            top_right_rate = float(task.get('top_right_rate', 1.00))
+            min_question_time = float(task.get('min_question_time', 5.0))
 
-            questions_all_num_now = int(course.get('questions_all_num_now', 0))
-            last_time_question_num = int(course.get('last_time_question_num', 0))
+            current_question_num = int(task.get('current_question_num', 0))
+            current_right_num = int(task.get('current_right_num', 0))
 
             course_finish = False
 
@@ -127,21 +163,30 @@ class QingMYZClass():
             try_times = 0
             try_times_max = 30
             while True:
+                if getattr(self, 'stopped', False):
+                    raise InterruptedError("Task stopped manually")
                 try:
                     # ---------答题环节----------
                     while True:
-                        if questions_all_num_now + last_time_question_num >= aim_questions_num_total:
-                            print(f"{course['course_name']}: 已到达全部题目数目")
-                            last_time_question_num = 0
+                        if getattr(self, 'stopped', False):
+                            raise InterruptedError("Task stopped manually")
+                        if current_question_num >= aim_questions_num_total:
+                            print(f"{task['course_name']}: 已到达全部题目数目")
+                            task['finish'] = True
+                            self.__updataUserData()
                             course_finish = True
                             break
 
                         print('-------------------------------')
                         # 记录开始时间
                         start_time = time.time()
-                        sleep(0.5)
+                        self._sleep(0.5)
                         # 获取当前题目
                         question = get_question(driver)
+
+                        # 打印题目与选项
+                        print(f'题目:{question[0]} {question[1]}')
+                        print('选项:', question[2])
 
                         # 判断是否出现刷题检测
                         if detect_error(question):
@@ -151,7 +196,7 @@ class QingMYZClass():
 
                         # 控制正确率
                         if low_right_rate == 1:
-                            answer = get_answer_by_all_right(question, course['course_name'])
+                            answer = get_answer_by_all_right(question, task['course_name'])
                             if answer == []:
                                 driver.refresh()
                                 continue
@@ -165,40 +210,40 @@ class QingMYZClass():
                                         answer = [random.choice(question[2])]
                                         print(f"\n正确率过高警告, 随机选择答案{answer}\n")
                                     else:
-                                        answer = get_answer_by_all(question, course['course_name'])
+                                        answer = get_answer_by_all(question, task['course_name'])
                                 else:
                                     print("\n正确率过低警告!!!!!!!!!!!!!!!!!!\n")
                                     # 查找答案
-                                    answer = get_answer_by_all(question, course['course_name'])
+                                    answer = get_answer_by_all(question, task['course_name'])
                             else:
                                 # 查找答案
-                                answer = get_answer_by_all(question, course['course_name'])
+                                answer = get_answer_by_all(question, task['course_name'])
 
                         # 点击答案
                         right_answer, answer_sucess = click_answer(driver, answer, question[0], question)
 
                         # 答题后
-                        after_answer(question, right_answer, course['course_name'])
+                        after_answer(question, right_answer, task['course_name'])
 
                         # 记录结束时间
                         end_time = time.time()
 
-                        # 统计及绘制数据
-                        # 打印题目
-                        print(f'题目:{question[0]} {question[1]}')
-                        print('选项:', question[2])
-
                         # 打印答案是否正确
                         now_all_questions += 1 # 当前轮数做的题数,不包括中断前,主要用于计算正确率
-                        last_time_question_num += 1
+                        current_question_num += 1
                         if answer_sucess:
                             right_question += 1
+                            current_right_num += 1
                             print('回答正确')
                         else:
                             if right_answer == answer:
                                 print('回答超时, 正确答案: ', right_answer)
                             else:
                                 print('回答错误, 正确答案: ', right_answer)
+
+                        # 答完一题立即更新本地记录
+                        task['current_question_num'] = current_question_num
+                        task['current_right_num'] = current_right_num
 
                         # 当前回答数据
                         now_right_rate = right_question/now_all_questions
@@ -216,41 +261,43 @@ class QingMYZClass():
                                                             min_question_time - (end_time - start_time) + 2)
                             sleep_time = round(sleep_time, 2)
                             print(f'补偿做题时间:{sleep_time:.2f}')      
-                            sleep(sleep_time)
+                            self._sleep(sleep_time)
 
                         # 输出统计时间
                         all_time += end_time - start_time
                         print(f'已经答题{all_time:.2f}s, 本题用时{end_time - start_time:.2f}s, 总共用时{(end_time - start_time)+sleep_time:.2f}s')
                         print(f"其他信息: trytime:{try_times}, RobotDetectedtime:{robot_detected_time}")
 
-                        sleep(1)
+                        self._sleep(1)
 
-                        if last_time_question_num >= questions_num_day_max:
-                            print(f"{course['course_name']}: 单轮答题数量上限")
-                            if last_time_question_num + questions_all_num_now >= aim_questions_num_total:
-                                print(f"{course['course_name']}: 已到达全部题目数目")
-                                course_finish = True
+                        if current_question_num >= aim_questions_num_total:
+                            print(f"{task['course_name']}: 已到达全部题目数目")
+                            task['finish'] = True
+                            self.__updataUserData()
+                            course_finish = True
                             break
+                        
+                        self.__updataUserData()
                     break
                 except Exception as e:
+                    if getattr(self, 'stopped', False):
+                        raise e
                     try_times += 1
                     if try_times > try_times_max:
                         # 异常中断时保存当前做题进度
-                        course['questions_all_num_now'] = questions_all_num_now + last_time_question_num
-                        course['last_time_question_num'] = last_time_question_num
+                        task['current_question_num'] = current_question_num
+                        task['current_right_num'] = current_right_num
                         self.__updataUserData()
                         raise e
                     driver.refresh()
 
             # 同步更新本门课程的最终数据
             if course_finish:
-                course['questions_all_num_now'] = 0
-                course['last_time_question_num'] = 0
-                course['finish'] = True
+                task['finish'] = True
             else:
-                course['questions_all_num_now'] = questions_all_num_now + last_time_question_num
-                course['last_time_question_num'] = last_time_question_num
-                course['finish'] = False
+                task['current_question_num'] = current_question_num
+                task['current_right_num'] = current_right_num
+                task['finish'] = False
 
             self.__updataUserData()
 
@@ -274,9 +321,9 @@ class QingMYZClass():
         # 设置chrome浏览器路径
         options.binary_location = f"{current_dir}\\ChromeWithDriver\\chrome.exe"
 
-        # 设置无头浏览器
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
+        # 根据配置决定是否以最小化启动（配合之后的隐藏/显示控制）
+        if not getattr(self, 'show_browser_gui', False):
+            options.add_argument('--start-minimized')
         
         # 忽略浏览器控制警告
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
@@ -297,10 +344,84 @@ class QingMYZClass():
         # 设置最长刷新等待时间
         driver.implicitly_wait(10)
 
-        # 最大化窗口
-        driver.maximize_window()
+        # 最大化窗口 (只有初始显示时才最大化，避免最小化启动被撤销)
+        if getattr(self, 'show_browser_gui', False):
+            driver.maximize_window()
+
+        # 在创建浏览器后定位 HWND 并进行初始隐藏控制
+        try:
+            import ctypes
+            unique_title = f"AutoQMYZ_Task_{getattr(self, 'task_id', 'unknown')}_{random.randint(10000, 99999)}"
+            driver.execute_script(f"document.title = '{unique_title}'")
+            sleep(0.2)
+            
+            hwnd = [0]
+            WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+            
+            def EnumWindowsCallback(h, extra):
+                length = ctypes.windll.user32.GetWindowTextLengthW(h)
+                if length > 0:
+                    buffer = ctypes.create_unicode_buffer(length + 1)
+                    ctypes.windll.user32.GetWindowTextW(h, buffer, length + 1)
+                    title = buffer.value
+                    if unique_title in title:
+                        hwnd[0] = h
+                        return False
+                return True
+                
+            ctypes.windll.user32.EnumWindows(WNDENUMPROC(EnumWindowsCallback), 0)
+            if hwnd[0] != 0:
+                self.hwnd = hwnd[0]
+                print(f"[Driver] Found window HWND: {self.hwnd}")
+                self.disable_close_button()
+                if not getattr(self, 'show_browser_gui', False):
+                    self.hide_browser()
+            else:
+                print("[Driver] Failed to find window HWND by title.")
+        except Exception as e:
+            print(f"[Driver] Error setting window title or finding HWND: {e}")
 
         return driver, ua
+
+    def disable_close_button(self):
+        hwnd = getattr(self, 'hwnd', None)
+        if hwnd:
+            try:
+                import ctypes
+                SC_CLOSE = 0xF060
+                MF_BYCOMMAND = 0x00000000
+                MF_GRAYED = 0x00000001
+                
+                hMenu = ctypes.windll.user32.GetSystemMenu(hwnd, False)
+                if hMenu:
+                    ctypes.windll.user32.EnableMenuItem(hMenu, SC_CLOSE, MF_BYCOMMAND | MF_GRAYED)
+                    print(f"[Driver] Disabled close button for window {hwnd}")
+            except Exception as e:
+                print(f"[Driver] Failed to disable close button: {e}")
+
+    def hide_browser(self):
+        hwnd = getattr(self, 'hwnd', None)
+        if hwnd:
+            try:
+                import ctypes
+                # SW_HIDE = 0
+                ctypes.windll.user32.ShowWindow(hwnd, 0)
+                print(f"[Driver] Browser window {hwnd} hidden.")
+            except Exception as e:
+                print(f"[Driver] Error hiding browser window: {e}")
+
+    def show_browser(self):
+        hwnd = getattr(self, 'hwnd', None)
+        if hwnd:
+            try:
+                import ctypes
+                # SW_RESTORE = 9, SW_SHOW = 5
+                ctypes.windll.user32.ShowWindow(hwnd, 9)
+                ctypes.windll.user32.ShowWindow(hwnd, 5)
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                print(f"[Driver] Browser window {hwnd} shown.")
+            except Exception as e:
+                print(f"[Driver] Error showing browser window: {e}")
 
     # 获取用户数据
     def __getUserData(self):
@@ -319,7 +440,7 @@ class QingMYZClass():
             raise ValueError('用户数据不完整')
 
         # 读取做题课程数据与 UA
-        self.__courses = user_data.get('courses', [])
+        self.__tasks = user_data.get('tasks', user_data.get('courses', []))
         self.__UA = user_data.get('other', {}).get('UA', '')
                 
     # 更新用户数据
@@ -331,7 +452,9 @@ class QingMYZClass():
             if self.__verify_request != '':
                 user_data['user']['verify_request'] = self.__verify_request
                 
-            user_data['courses'] = self.__courses
+            if 'courses' in user_data:
+                del user_data['courses']
+            user_data['tasks'] = self.__tasks
 
             if 'other' not in user_data:
                 user_data['other'] = {}

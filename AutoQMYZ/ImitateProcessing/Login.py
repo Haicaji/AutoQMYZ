@@ -56,7 +56,7 @@ def login(name, passwd):
         raise Exception("登录失败")
 
 def get_verify_request(access_token, UA):
-    if UA != "":
+    if UA and UA != "" and not UA.startswith("固定使用") and all(ord(c) < 128 for c in UA):
         ua = UA
     else:
         ua = get_ua()

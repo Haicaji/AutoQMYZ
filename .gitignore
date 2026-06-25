@@ -164,3 +164,4 @@ Data/User/
 config.toml
 Data/logs/
 Python3118/
+Data/queue.json

@@ -31,6 +31,9 @@ class LoggerWriter:
             self.buffer = ""
         self.original_stream.flush()
 
+    def isatty(self):
+        return False
+
 def setup_logging():
     # 当前所在绝对路径 (Logger.py 位于 AutoQMYZ/ 下)
     current_dir = os.path.dirname(os.path.abspath(__file__))
