@@ -23,7 +23,7 @@ def apply_stealth_script(driver, project_root=None):
 
 # 判断是否为刷题检测题
 def detect_error(question):
-    if '刷题' in question[0]:
+    if '刷题' in question[0] or '刷题' in question[1]:
         print('\n\n出现防刷题题目\n\n')
         return True
     
